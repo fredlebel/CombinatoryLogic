@@ -1,3 +1,7 @@
 Combinator.exe
 Combinator.hi
 Combinator.o
+bin/
+obj/
+*.suo
+

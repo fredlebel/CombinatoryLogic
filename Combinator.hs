@@ -27,7 +27,7 @@ data CLTree = Branch CLTree CLTree | Leaf Char
     deriving (Show, Eq)
 
 isCombinator :: Char -> Bool
-isCombinator c = isAscii c && isLetter c
+isCombinator c = isAscii c && (isLetter c || isDigit c)
 
 {-
 -- Converts a string to a CLTree.  String must be in full parantheses format.
@@ -176,8 +176,30 @@ hardcodedSymbols =
         Right symbols -> symbols
     where
         result = (
-            (loadSymbol 'A' "S(K(SI))(S(KK)I)") >=>
-            (loadSymbol 'B' "S(KS)K")
+            -- Bxyz = x(yz)
+            (loadSymbol 'B' "S(KS)K") >=>
+            -- Cxyz = xzy
+            (loadSymbol 'C' "S(BBS)(KK)") >=>
+            -- Wxy = xyy
+            (loadSymbol 'W' "SS(KI)") >=>
+            -- Y combinator
+            (loadSymbol 'Y' "SSK(S(K(SS(S(SSK))))K)") >=>
+            -- Txy = yx
+            (loadSymbol 'T' "S(K(SI))(S(KK)I)") >=>
+            -- Pxyz = z(xy)
+            (loadSymbol 'P' "BT") >=>
+            -- Dxy0 = x, Dxy1 = y
+            (loadSymbol 'D' "(S(S(KS)(S(S(KS)(S(KK)(KS)))(S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))(S(S(KS)(S(S(KS)(S(KK)(KS)))(S(S(KS)(S(KK)(KK)))(S(KK)(KK)))))(S(S(KS)(S(KK)(KK)))(KI))))))(S(S(KS)(S(KK)(KK)))(S(KK)I)))") >=>
+            (loadSymbol '0' "(KI)") >=>
+            (loadSymbol '1' "SB(KI)") >=>
+            (loadSymbol '2' "SB(SB(KI))") >=>
+            (loadSymbol '3' "SB(SB(SB(KI)))") >=>
+            (loadSymbol '4' "SB(SB(SB(SB(KI))))") >=>
+            (loadSymbol '5' "SB(SB(SB(SB(SB(KI)))))") >=>
+            (loadSymbol '6' "SB(SB(SB(SB(SB(SB(KI))))))") >=>
+            (loadSymbol '7' "SB(SB(SB(SB(SB(SB(SB(KI)))))))") >=>
+            (loadSymbol '8' "SB(SB(SB(SB(SB(SB(SB(SB(KI))))))))") >=>
+            (loadSymbol '9' "SB(SB(SB(SB(SB(SB(SB(SB(SB(KI)))))))))")
             ) Map.empty
 
 printResult :: (Show r) => Either String r -> IO()
@@ -187,6 +209,7 @@ printResult (Left l) = putStrLn ("Error! " ++ l)
 main = do
     args <- getArgs
 
+    {-
     putStrLn ""
     putStrLn "== Unittest. =="
     case unitTest of
@@ -195,37 +218,21 @@ main = do
 
     putStrLn ""
     putStrLn "== Parsing command line combinator string. =="
+    -}
     let inputCombinator  = args !! 0
     let result = readCLTree inputCombinator
-    printResult $ result
+    -- printResult $ result
 
     case result of
-        (Left _) -> return ()
+        (Left str) -> putStrLn str
         (Right tree) -> do
             putStrLn . showCLTree $ tree
             putStrLn . showCLTreeCompact $ tree
             case compile False hardcodedSymbols tree of
                 Right compiledTree -> do
-                    putStrLn . showCLTreeCompact $ compiledTree
-                    putStrLn . showCLTreeCompact . (!!  1) . (iterate reduceTree) $ compiledTree
-                    putStrLn . showCLTreeCompact . (!!  2) . (iterate reduceTree) $ compiledTree
-                    putStrLn . showCLTreeCompact . (!!  3) . (iterate reduceTree) $ compiledTree
-                    putStrLn . showCLTreeCompact . (!!  4) . (iterate reduceTree) $ compiledTree
-                    putStrLn . showCLTreeCompact . (!!  5) . (iterate reduceTree) $ compiledTree
-                    putStrLn . showCLTreeCompact . (!!  6) . (iterate reduceTree) $ compiledTree
-                    putStrLn . showCLTreeCompact . (!!  7) . (iterate reduceTree) $ compiledTree
-                    putStrLn . showCLTreeCompact . (!!  8) . (iterate reduceTree) $ compiledTree
-                    putStrLn . showCLTreeCompact . (!!  9) . (iterate reduceTree) $ compiledTree
-                    putStrLn . showCLTreeCompact . (!! 10) . (iterate reduceTree) $ compiledTree
-                    putStrLn . showCLTreeCompact . (!! 11) . (iterate reduceTree) $ compiledTree
-                    putStrLn . showCLTreeCompact . (!! 12) . (iterate reduceTree) $ compiledTree
-                    putStrLn . showCLTreeCompact . (!! 13) . (iterate reduceTree) $ compiledTree
-                    putStrLn . showCLTreeCompact . (!! 14) . (iterate reduceTree) $ compiledTree
-                    putStrLn . showCLTreeCompact . (!! 15) . (iterate reduceTree) $ compiledTree
-                    putStrLn . showCLTreeCompact . (!! 16) . (iterate reduceTree) $ compiledTree
-                    putStrLn . showCLTreeCompact . (!! 17) . (iterate reduceTree) $ compiledTree
-                    putStrLn . showCLTreeCompact . (!! 18) . (iterate reduceTree) $ compiledTree
+                    mapM_ (\n -> putStrLn . showCLTreeCompact . (!!  n) . (iterate reduceTree) $ compiledTree) [0..100]
 
+    {-
     putStrLn ""
     putStrLn "== Church encoding test. =="
     let churchTest = do
@@ -239,22 +246,72 @@ main = do
     case churchTest of
         Right tree -> putStrLn . showCLTreeCompact $ tree
         Left str -> putStrLn str
+    -}
 
--- Argument swap.
--- ./Combinator.exe "S(K(SI))(S(KK)I)xy"
--- Church #3 application.
--- ./Combinator.exe "(SB)((SB)((SB)(KI)))xy"
+{-
 
-        
--- (((S(KI))x)y)
--- S(KI)xy
+Argument swap.
+./Combinator.exe "S(K(SI))(S(KK)I)xy"
+Church #3 application.
+./Combinator.exe "(SB)((SB)((SB)(KI)))xy"
 
--- ((SK)I) = SKI
--- (S(KI)) = S(KI)
+     
+(((S(KI))x)y)
+S(KI)xy
 
--- (S)((KI)(SB))II
+((SK)I) = SKI
+(S(KI)) = S(KI)
 
--- Combinator.exe --symbol B "((S(KS))K)" --symbol A "((S(K(SI)))((S(KK))I))" --compact --nf "((SB)((SB)((SB)(KI))))"
--- Combinator.exe --symbol B "((S(KS))K)" --full --step 2 "((SB)((SB)((SB)(KI))))"
+(S)((KI)(SB))II
+
+Combinator.exe --symbol B "((S(KS))K)" --symbol A "((S(K(SI)))((S(KK))I))" --compact --nf "((SB)((SB)((SB)(KI))))"
+Combinator.exe --symbol B "((S(KS))K)" --full --step 2 "((SB)((SB)((SB)(KI))))"
+
+-- Manually deriving the D combinator since I couldn't find it online.
+[\xyz.z(Ky)x]
+= [\x.[\y.[\z.(z(Ky))x]]]
+= [\x.[\y.(S[\z.z(Ky)][\z.x])]]
+= [\x.[\y.(S(S[\z.z][\z.Ky])(Kx))]]
+= [\x.[\y.(S(SI[\z.Ky])(Kx))]]
+= [\x.[\y.(S(SI(S[\z.K][\z.y]))(Kx))]]
+= [\x.[\y.(S(SI(S(KK)(Ky)))(Kx))]]
+-- z abstraction is gone
+= [\x.[\y.(S(SI(S(KK)(Ky))))(Kx)]]
+= [\x.(S[\y.(S(SI(S(KK)(Ky))))][\y.(Kx)])]
+= [\x.(S[\y.(S(SI(S(KK)(Ky))))](S[\y.K][\y.x]))]
+= [\x.(S[\y.S(SI(S(KK)(Ky)))](S(KK)(Kx)))]
+= [\x.(S(S[\y.S][\y.(SI(S(KK)(Ky)))])(S(KK)(Kx)))]
+= [\x.(S(S(KS)(S[\y.SI]      [\y.(S(KK)(Ky))]    ))(S(KK)(Kx)))]
+= [\x.(S(S(KS)(S(S(KS)(KI))  [\y.(S(KK)(Ky))]    ))(S(KK)(Kx)))]
+= [\x.(S(S(KS)(S(S(KS)(KI))  (S[\y.S(KK)][\y.(Ky)])    ))(S(KK)(Kx)))]
+= [\x.(S(S(KS)(S(S(KS)(KI))  (S[\y.S(KK)](S(KK)I))    ))(S(KK)(Kx)))]
+= [\x.(S(S(KS)(S(S(KS)(KI))  (S(S[\y.S][\y.(KK)])(S(KK)I))    ))(S(KK)(Kx)))]
+= [\x.(S(S(KS)(S(S(KS)(KI))  (S(S(KS)(S(KK)(KK)))(S(KK)I))    ))(S(KK)(Kx)))]
+-- y abstraction is gone
+= [\x.S(S(KS)(S(S(KS)(KI))(S(S(KS)(S(KK)(KK)))(S(KK)I))))(S(KK)(Kx))]
+= (S[\x.S(S(KS)(S(S(KS)(KI))(S(S(KS)(S(KK)(KK)))(S(KK)I))))] [\x.S(KK)(Kx)])
+= (S[\x.S(S(KS)(S(S(KS)(KI))(S(S(KS)(S(KK)(KK)))(S(KK)I))))] (S[\x.S(KK)][\x.(Kx)]))
+= (S[\x.S(S(KS)(S(S(KS)(KI))(S(S(KS)(S(KK)(KK)))(S(KK)I))))] (S(S[\x.S][\x.(KK)])(S(KK)I)))
+= (S[\x.S(S(KS)(S(S(KS)(KI))(S(S(KS)(S(KK)(KK)))(S(KK)I))))] (S(S(KS)(S(KK)(KK)))(S(KK)I)))
+= (S(S(KS)[\x.(S(KS)(S(S(KS)(KI))(S(S(KS)(S(KK)(KK)))(S(KK)I))))]) (S(S(KS)(S(KK)(KK)))(S(KK)I)))
+= (S(S(KS)(S[\x.S(KS)] [\x.(S(S(KS)(KI))(S(S(KS)(S(KK)(KK)))(S(KK)I)))])) (S(S(KS)(S(KK)(KK)))(S(KK)I)))
+= (S(S(KS)(S(S(KS)(S(KK)(KS))) [\x.(S(S(KS)(KI))(S(S(KS)(S(KK)(KK)))(S(KK)I)))])) (S(S(KS)(S(KK)(KK)))(S(KK)I)))
+= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S[\x.S(S(KS)(KI))][\x.(S(S(KS)(S(KK)(KK)))(S(KK)I))]))) (S(S(KS)(S(KK)(KK)))(S(KK)I)))
+= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)[\x.(S(KS)(KI))])[\x.(S(S(KS)(S(KK)(KK)))(S(KK)I))]))) (S(S(KS)(S(KK)(KK)))(S(KK)I)))
+= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S[\x.S(KS)](S(KK)(KI))))[\x.(S(S(KS)(S(KK)(KK)))(S(KK)I))]))) (S(S(KS)(S(KK)(KK)))(S(KK)I)))
+= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))[\x.(S(S(KS)(S(KK)(KK)))(S(KK)I))]))) (S(S(KS)(S(KK)(KK)))(S(KK)I)))
+= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))    (S[\x.S(S(KS)(S(KK)(KK)))][\x.S(KK)I])     )))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
+= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))    (S[\x.S(S(KS)(S(KK)(KK)))](S[\x.S(KK)](KI)))     )))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
+= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))    (S[\x.S(S(KS)(S(KK)(KK)))](S(S(KS)(S(KK)(KK)))(KI)))     )))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
+= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))    (S(S(KS)[\x.(S(KS)(S(KK)(KK)))])      (S(S(KS)(S(KK)(KK)))(KI))))))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
+= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))    (S(S(KS)(S[\x.S(KS)][\x.(S(KK)(KK))]))      (S(S(KS)(S(KK)(KK)))(KI))))))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
+= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))    (S(S(KS)(S(S(KS)(S(KK)(KS)))[\x.(S(KK)(KK))]))      (S(S(KS)(S(KK)(KK)))(KI))))))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
+= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))(S(S(KS)(S(S(KS)(S(KK)(KS)))    (S[\x.S(KK)][\x.(KK)])))      (S(S(KS)(S(KK)(KK)))(KI))))))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
+= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))(S(S(KS)(S(S(KS)(S(KK)(KS)))    (S(S(KS)[\x.(KK)])(S(KK)(KK)))))      (S(S(KS)(S(KK)(KK)))(KI))))))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
+= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))(S(S(KS)(S(S(KS)(S(KK)(KS)))    (S(S(KS)(S(KK)(KK)))(S(KK)(KK)))))      (S(S(KS)(S(KK)(KK)))(KI))))))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
+-- x abstraction is gone
+= (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))(S(S(KS)(S(S(KS)(S(KK)(KS)))(S(S(KS)(S(KK)(KK)))(S(KK)(KK)))))(S(S(KS)(S(KK)(KK)))(KI))))))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
+
+-}
 
 
