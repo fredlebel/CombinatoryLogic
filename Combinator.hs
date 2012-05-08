@@ -182,14 +182,16 @@ hardcodedSymbols =
             (loadSymbol 'C' "S(BBS)(KK)") >=>
             -- Wxy = xyy
             (loadSymbol 'W' "SS(KI)") >=>
-            -- Y combinator
-            (loadSymbol 'Y' "SSK(S(K(SS(S(SSK))))K)") >=>
+            -- Ufx = x(ffx)
+            (loadSymbol 'U' "(S(K(SI))(SII))") >=>
+            -- Y combinator, Yx = x(Yx)
+            (loadSymbol 'Y' "UU") >=>
             -- Txy = yx
             (loadSymbol 'T' "S(K(SI))(S(KK)I)") >=>
             -- Pxyz = z(xy)
             (loadSymbol 'P' "BT") >=>
             -- Dxy0 = x, Dxy1 = y
-            (loadSymbol 'D' "(S(S(KS)(S(S(KS)(S(KK)(KS)))(S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))(S(S(KS)(S(S(KS)(S(KK)(KS)))(S(S(KS)(S(KK)(KK)))(S(KK)(KK)))))(S(S(KS)(S(KK)(KK)))(KI))))))(S(S(KS)(S(KK)(KK)))(S(KK)I)))") >=>
+            (loadSymbol 'D' "(S(K(S(S(KS)(S(K(SI))(S(KK)K)))))(S(KK)K))") >=>
             (loadSymbol '0' "(KI)") >=>
             (loadSymbol '1' "SB(KI)") >=>
             (loadSymbol '2' "SB(SB(KI))") >=>
@@ -199,7 +201,15 @@ hardcodedSymbols =
             (loadSymbol '6' "SB(SB(SB(SB(SB(SB(KI))))))") >=>
             (loadSymbol '7' "SB(SB(SB(SB(SB(SB(SB(KI)))))))") >=>
             (loadSymbol '8' "SB(SB(SB(SB(SB(SB(SB(SB(KI))))))))") >=>
-            (loadSymbol '9' "SB(SB(SB(SB(SB(SB(SB(SB(SB(KI)))))))))")
+            (loadSymbol '9' "SB(SB(SB(SB(SB(SB(SB(SB(SB(KI)))))))))") >=>
+            
+            -- Q = \yv.D (succ(v0)) (y(v0)(v1))
+            (loadSymbol 'Q' "(S(K(S(S(KD)(S(K(SB))(SI(K0))))))(S(S(KS)(S(S(KS)K)(K((SI(K0))))))(K((SI(K1))))))") >=>
+            -- R = \xyu.u(Qy)(D0x)1
+            -- Rxy0 = x
+            -- Rxy(k+1) = yk(Rxyk)
+            (loadSymbol 'R' "(S(S(KS)(S(K(S(KS)))(S(K(S(S(KS)(S(K(SI))(S(KK)Q)))))(S(KK)(S(KK)(D0))))))(K(K(K1))))")
+            
             ) Map.empty
 
 printResult :: (Show r) => Either String r -> IO()
@@ -269,49 +279,93 @@ Combinator.exe --symbol B "((S(KS))K)" --full --step 2 "((SB)((SB)((SB)(KI))))"
 
 -- Manually deriving the D combinator since I couldn't find it online.
 [\xyz.z(Ky)x]
+
+1. [x].M = KM (if x is not a FV(M))
+2. [x].x = I
+3. [x].Ux = U (if x is not a FV(U))
+4. [x].UV = S([x].U)([x].V) if (1. or 3. don't apply)
+
+[\xyz.z(Ky)x]
 = [\x.[\y.[\z.(z(Ky))x]]]
 = [\x.[\y.(S[\z.z(Ky)][\z.x])]]
 = [\x.[\y.(S(S[\z.z][\z.Ky])(Kx))]]
-= [\x.[\y.(S(SI[\z.Ky])(Kx))]]
-= [\x.[\y.(S(SI(S[\z.K][\z.y]))(Kx))]]
-= [\x.[\y.(S(SI(S(KK)(Ky)))(Kx))]]
--- z abstraction is gone
-= [\x.[\y.(S(SI(S(KK)(Ky))))(Kx)]]
-= [\x.(S[\y.(S(SI(S(KK)(Ky))))][\y.(Kx)])]
-= [\x.(S[\y.(S(SI(S(KK)(Ky))))](S[\y.K][\y.x]))]
-= [\x.(S[\y.S(SI(S(KK)(Ky)))](S(KK)(Kx)))]
-= [\x.(S(S[\y.S][\y.(SI(S(KK)(Ky)))])(S(KK)(Kx)))]
-= [\x.(S(S(KS)(S[\y.SI]      [\y.(S(KK)(Ky))]    ))(S(KK)(Kx)))]
-= [\x.(S(S(KS)(S(S(KS)(KI))  [\y.(S(KK)(Ky))]    ))(S(KK)(Kx)))]
-= [\x.(S(S(KS)(S(S(KS)(KI))  (S[\y.S(KK)][\y.(Ky)])    ))(S(KK)(Kx)))]
-= [\x.(S(S(KS)(S(S(KS)(KI))  (S[\y.S(KK)](S(KK)I))    ))(S(KK)(Kx)))]
-= [\x.(S(S(KS)(S(S(KS)(KI))  (S(S[\y.S][\y.(KK)])(S(KK)I))    ))(S(KK)(Kx)))]
-= [\x.(S(S(KS)(S(S(KS)(KI))  (S(S(KS)(S(KK)(KK)))(S(KK)I))    ))(S(KK)(Kx)))]
--- y abstraction is gone
-= [\x.S(S(KS)(S(S(KS)(KI))(S(S(KS)(S(KK)(KK)))(S(KK)I))))(S(KK)(Kx))]
-= (S[\x.S(S(KS)(S(S(KS)(KI))(S(S(KS)(S(KK)(KK)))(S(KK)I))))] [\x.S(KK)(Kx)])
-= (S[\x.S(S(KS)(S(S(KS)(KI))(S(S(KS)(S(KK)(KK)))(S(KK)I))))] (S[\x.S(KK)][\x.(Kx)]))
-= (S[\x.S(S(KS)(S(S(KS)(KI))(S(S(KS)(S(KK)(KK)))(S(KK)I))))] (S(S[\x.S][\x.(KK)])(S(KK)I)))
-= (S[\x.S(S(KS)(S(S(KS)(KI))(S(S(KS)(S(KK)(KK)))(S(KK)I))))] (S(S(KS)(S(KK)(KK)))(S(KK)I)))
-= (S(S(KS)[\x.(S(KS)(S(S(KS)(KI))(S(S(KS)(S(KK)(KK)))(S(KK)I))))]) (S(S(KS)(S(KK)(KK)))(S(KK)I)))
-= (S(S(KS)(S[\x.S(KS)] [\x.(S(S(KS)(KI))(S(S(KS)(S(KK)(KK)))(S(KK)I)))])) (S(S(KS)(S(KK)(KK)))(S(KK)I)))
-= (S(S(KS)(S(S(KS)(S(KK)(KS))) [\x.(S(S(KS)(KI))(S(S(KS)(S(KK)(KK)))(S(KK)I)))])) (S(S(KS)(S(KK)(KK)))(S(KK)I)))
-= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S[\x.S(S(KS)(KI))][\x.(S(S(KS)(S(KK)(KK)))(S(KK)I))]))) (S(S(KS)(S(KK)(KK)))(S(KK)I)))
-= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)[\x.(S(KS)(KI))])[\x.(S(S(KS)(S(KK)(KK)))(S(KK)I))]))) (S(S(KS)(S(KK)(KK)))(S(KK)I)))
-= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S[\x.S(KS)](S(KK)(KI))))[\x.(S(S(KS)(S(KK)(KK)))(S(KK)I))]))) (S(S(KS)(S(KK)(KK)))(S(KK)I)))
-= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))[\x.(S(S(KS)(S(KK)(KK)))(S(KK)I))]))) (S(S(KS)(S(KK)(KK)))(S(KK)I)))
-= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))    (S[\x.S(S(KS)(S(KK)(KK)))][\x.S(KK)I])     )))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
-= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))    (S[\x.S(S(KS)(S(KK)(KK)))](S[\x.S(KK)](KI)))     )))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
-= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))    (S[\x.S(S(KS)(S(KK)(KK)))](S(S(KS)(S(KK)(KK)))(KI)))     )))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
-= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))    (S(S(KS)[\x.(S(KS)(S(KK)(KK)))])      (S(S(KS)(S(KK)(KK)))(KI))))))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
-= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))    (S(S(KS)(S[\x.S(KS)][\x.(S(KK)(KK))]))      (S(S(KS)(S(KK)(KK)))(KI))))))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
-= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))    (S(S(KS)(S(S(KS)(S(KK)(KS)))[\x.(S(KK)(KK))]))      (S(S(KS)(S(KK)(KK)))(KI))))))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
-= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))(S(S(KS)(S(S(KS)(S(KK)(KS)))    (S[\x.S(KK)][\x.(KK)])))      (S(S(KS)(S(KK)(KK)))(KI))))))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
-= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))(S(S(KS)(S(S(KS)(S(KK)(KS)))    (S(S(KS)[\x.(KK)])(S(KK)(KK)))))      (S(S(KS)(S(KK)(KK)))(KI))))))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
-= (S(S(KS)(S(S(KS)(S(KK)(KS))) (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))(S(S(KS)(S(S(KS)(S(KK)(KS)))    (S(S(KS)(S(KK)(KK)))(S(KK)(KK)))))      (S(S(KS)(S(KK)(KK)))(KI))))))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
+= [\x.[\y.(S(SI(K(Ky)))(Kx))]]
+-- z abstraction is gone.
+= [\x.[\y.S(SI(K(Ky)))(Kx)]]
+= [\x.(S    [\y.S(SI(K(Ky)))]   [\y.(Kx)])]
+= [\x.(S    (S(KS)[\y.(SI(K(Ky)))])   (K(Kx)))]
+= [\x.(S(S(KS)(S(K(SI)) [\y.K(Ky)]  ))(K(Kx)))]
+= [\x.(S(S(KS)(S(K(SI)) (S(KK)K)  ))(K(Kx)))]
+-- y abstraction is gone.
+= [\x.S(S(KS)(S(K(SI))(S(KK)K)))(K(Kx))]
+= (S[\x.S(S(KS)(S(K(SI))(S(KK)K)))]     [\x.(K(Kx))])
+= (S(K(S(S(KS)(S(K(SI))(S(KK)K)))))     (S[\x.K][\x.(Kx)]))
+= (S(K(S(S(KS)(S(K(SI))(S(KK)K)))))     (S(KK)K))
 -- x abstraction is gone
-= (S(S(KS)(S(S(KS)(S(KK)(KS)))(S(S(KS)(S(S(KS)(S(KK)(KS)))(S(KK)(KI))))(S(S(KS)(S(S(KS)(S(KK)(KS)))(S(S(KS)(S(KK)(KK)))(S(KK)(KK)))))(S(S(KS)(S(KK)(KK)))(KI))))))(S(S(KS)(S(KK)(KK)))(S(KK)I)))
+= (S(K(S(S(KS)(S(K(SI))(S(KK)K)))))(S(KK)K))
+
+
+-- Deriving U \ux.x(uux)
+[\u.[\x.x(uux)]]
+= [\u.(SI[\x.uux])]
+= [\u.(SI(uu))]
+= (S[\u.SI][\u.(uu)])
+= (S(K(SI))(S[\u.u][\u.u]))
+= (S(K(SI))(SII))
+
+Deriving Q \yv.D (succ(v0)) (y(v0)(v1))
+= [\y.[\v.D ((SB)(v0)) (y(v0)(v1))]]
+= [\y.(S[\v.D((SB)(v0))]    [\v.(y(v0)(v1))])]
+= [\y.(S(S(KD)[\v.(SB)(v0)])    (S[\v.y(v0)][\v.(v1)]))]
+= [\y.(S(S(KD)[\v.(SB)(v0)])    (S(S(Ky)[\v.v0]) (SI(K1))))]
+= [\y.(S(S(KD)(S(K(SB))[\v.(v0)]))    (S(S(Ky)(SI(K0))) (SI(K1))))]
+= [\y.(S(S(KD)(S(K(SB))(SI(K0))))    (S(S(Ky)(SI(K0))) (SI(K1))))]
+-- v abstraction is gone
+= [\y.S(S(KD)(S(K(SB))(SI(K0))))(S(S(Ky)(SI(K0)))(SI(K1)))]
+= (S[\y.S(S(KD)(S(K(SB))(SI(K0))))]      [\y.(S(S(Ky)(SI(K0)))(SI(K1)))])
+= (S(K(S(S(KD)(S(K(SB))(SI(K0))))))      (S[\y.S(S(Ky)(SI(K0)))](K((SI(K1))))))
+= (S(K(S(S(KD)(S(K(SB))(SI(K0))))))      (S(S(KS)[\y.(S(Ky)(SI(K0)))])    (K((SI(K1))))))
+= (S(K(S(S(KD)(S(K(SB))(SI(K0))))))      (S(S(KS)(S[\y.S(Ky)]   (K((SI(K0))))))    (K((SI(K1))))))
+= (S(K(S(S(KD)(S(K(SB))(SI(K0))))))      (S(S(KS)(S(S(KS)[\y.Ky])   (K((SI(K0))))))    (K((SI(K1))))))
+= (S(K(S(S(KD)(S(K(SB))(SI(K0))))))      (S(S(KS)(S(S(KS)K)   (K((SI(K0))))))    (K((SI(K1))))))
+-- y abstraction is gone
+= (S(K(S(S(KD)(S(K(SB))(SI(K0))))))(S(S(KS)(S(S(KS)K)(K((SI(K0))))))(K((SI(K1))))))
+
+Deriving R \xyu.u(Qy)(D0x)1
+= [\x.[\y.[\u.u(Qy)(D0x)1]]]
+= [\x.[\y.(S[\u.u(Qy)(D0x)](K1))]]
+= [\x.[\y.(S(S(SI(K(Qy)))    (K(D0x)))(K1))]]
+-- u abstraction is gone.
+= [\x.[\y.S(S(SI(K(Qy)))(K(D0x)))(K1)]]
+= [\x.(S[\y.S(S(SI(K(Qy)))(K(D0x)))](K(K1)))]
+= [\x.(S    (S(KS)[\y.S(SI(K(Qy)))(K(D0x))])    (K(K1)))]
+= [\x.(S    (S(KS)(S(S(KS)[\y.SI(K(Qy))])   (K(K(D0x)))))    (K(K1)))]
+= [\x.(S    (S(KS)(S(S(KS)  (S(K(SI))[\y.K(Qy)]))   (K(K(D0x)))))    (K(K1)))]
+= [\x.(S    (S(KS)(S(S(KS)  (S(K(SI))(S(KK)Q)))   (K(K(D0x)))))    (K(K1)))]
+-- y abstraction is gone.
+= [\x.S(S(KS)(S(S(KS)(S(K(SI))(S(KK)Q)))(K(K(D0x)))))(K(K1))]
+= (S[\x.S(S(KS)(S(S(KS)(S(K(SI))(S(KK)Q)))(K(K(D0x)))))](K(K(K1))))
+= (S (S(KS)[\x.S(KS)(S(S(KS)(S(K(SI))(S(KK)Q)))(K(K(D0x))))])    (K(K(K1))))
+= (S (S(KS)(S(K(S(KS)))     [\x.S(S(KS)(S(K(SI))(S(KK)Q)))(K(K(D0x)))]))    (K(K(K1))))
+= (S (S(KS)(S(K(S(KS)))     (S(K(S(S(KS)(S(K(SI))(S(KK)Q)))))[\x.K(K(D0x))])))    (K(K(K1))))
+= (S (S(KS)(S(K(S(KS)))     (S(K(S(S(KS)(S(K(SI))(S(KK)Q)))))   (S(KK)[\x.K(D0x)]))))    (K(K(K1))))
+= (S (S(KS)(S(K(S(KS)))     (S(K(S(S(KS)(S(K(SI))(S(KK)Q)))))   (S(KK)(S(KK)[\x.D0x])))))    (K(K(K1))))
+= (S (S(KS)(S(K(S(KS)))     (S(K(S(S(KS)(S(K(SI))(S(KK)Q)))))   (S(KK)(S(KK)(D0))))))    (K(K(K1))))
+-- x abstraction is gone.
+= (S(S(KS)(S(K(S(KS)))(S(K(S(S(KS)(S(K(SI))(S(KK)Q)))))(S(KK)(S(KK)(D0))))))(K(K(K1))))
+
 
 -}
+
+
+
+
+
+
+
+
+
+
+
 
 

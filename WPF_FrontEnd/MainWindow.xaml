@@ -20,9 +20,9 @@
         </Grid>
 
         <GridSplitter Grid.Row="1"
-            HorizontalAlignment="Stretch" 
+            HorizontalAlignment="Stretch"
             ResizeBehavior="PreviousAndNext"
-            Height="5" Background="#FFBCBCBC"/>
+            Height="8" Background="#FFBCBCBC"/>
 
         <Grid Grid.Row="2">
             <Grid.RowDefinitions>
