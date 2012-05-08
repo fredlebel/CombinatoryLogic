@@ -20,6 +20,14 @@ replace a b (x:xs)
     | x == a    = b:(replace a b xs)
     | otherwise = x:(replace a b xs)
 
+-- Search in a map for the first key whose value matches the argument.
+findFirstKey :: (Eq a) => a -> Map.Map k a -> Maybe k
+findFirstKey toFind map = Map.foldrWithKey keyFinder Nothing map
+    where keyFinder key value acc
+            | toFind == value   = Just key
+            | otherwise         = acc
+    
+    
 -- ================================================================== --
 
 -- Binary tree representing a CL fragment
@@ -120,6 +128,16 @@ compile strict symbols (Branch l r) = do
     newR <- compile strict symbols r
     return $ Branch newL newR
 
+-- Compacts a tree composed of only SKI using a symbol map.
+-- Effectively the opposite of the function compile.
+-- Starts from the top of the tree so it will always compact to the biggest symbol
+compactWithSymbols :: CLSymbolMap -> CLTree -> CLTree
+compactWithSymbols symbols tree@(Leaf _) = tree
+compactWithSymbols symbols tree@(Branch l r) =
+    case findFirstKey tree symbols of
+        Just ch -> Leaf ch
+        Nothing -> Branch (compactWithSymbols symbols l) (compactWithSymbols symbols r)
+    
 -- Loads a combinator symbol.
 -- Once loaded that symbol can be used in future combinators.
 loadSymbol :: Char -> String -> CLSymbolMap -> Either String CLSymbolMap
@@ -240,7 +258,7 @@ main = do
             putStrLn . showCLTreeCompact $ tree
             case compile False hardcodedSymbols tree of
                 Right compiledTree -> do
-                    mapM_ (\n -> putStrLn . showCLTreeCompact . (!!  n) . (iterate reduceTree) $ compiledTree) [0..100]
+                    mapM_ (\n -> putStrLn . showCLTreeCompact . compactWithSymbols hardcodedSymbols . (!!  n) . (iterate reduceTree) $ compiledTree) [0..100]
 
     {-
     putStrLn ""
