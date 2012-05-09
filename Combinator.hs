@@ -7,6 +7,7 @@ import Control.Monad.Error
 -- Simple piping function
 a |> f = f a
 
+count :: (Eq a) => a -> [a] -> Int
 count a [] = 0
 count a (x:xs)
     | a == x    = 1 + (count a xs)
@@ -69,9 +70,14 @@ parseBranch str = do
 -- Converts a string to a CLTree.  String can be in minimal parantheses format.
 readCLTree :: String -> Either String CLTree
 readCLTree str = do
-    -- TODO, maybe validate that the returned string is empty.
-    (_, tree) <- readCLTreeLeft str
-    return (tree)
+    if count '(' str /= count ')' str
+        then Left ("Parentheses mismatch in \"" ++ str ++ "\"")
+        else do
+            (remainingStr, tree) <- readCLTreeLeft str
+            -- Validate that the returned string is empty.
+            if null remainingStr
+                then return tree
+                else Left ("Unexpected trailing characters \"" ++ remainingStr ++ "\"")
 
 readCLTreeLeft :: String -> Either String (String, CLTree)
 readCLTreeLeft [] = Left "Empty combinator string."
@@ -130,7 +136,7 @@ compile strict symbols (Branch l r) = do
 
 -- Compacts a tree composed of only SKI using a symbol map.
 -- Effectively the opposite of the function compile.
--- Starts from the top of the tree so it will always compact to the biggest symbol
+-- Starts from the top of the tree so it will always compact to the biggest symbol.
 compactWithSymbols :: CLSymbolMap -> CLTree -> CLTree
 compactWithSymbols symbols tree@(Leaf _) = tree
 compactWithSymbols symbols tree@(Branch l r) =
@@ -159,6 +165,8 @@ reduceTree (Leaf x) = (Leaf x)
 -- Branch, reduce both sides
 reduceTree (Branch l r) = Branch (reduceTree l) (reduceTree r)
 
+-- Reduces the tree until it no longer changes.
+-- Can loop forever if the tree has no normal forms.
 findNormalForm :: CLTree -> CLTree
 findNormalForm tree = if tree == newTree then tree else findNormalForm newTree
     where newTree = reduceTree tree
@@ -176,17 +184,6 @@ showCLTreeCompact :: CLTree -> String
 showCLTreeCompact (Leaf c) = [c]
 showCLTreeCompact (Branch l r@(Branch _ _)) = (showCLTreeCompact l) ++ "(" ++ (showCLTreeCompact r) ++ ")"
 showCLTreeCompact (Branch l r)              = (showCLTreeCompact l) ++        (showCLTreeCompact r)
-
-unitTest :: Either String CLTree
-unitTest = do
-    -- The R combinator here swaps two arguments.
-    symbols <- loadSymbol 'R' "S(K(SI))(S(KK)I)" Map.empty
-    f <- (readCLTree >=> compile False symbols) "R"
-    x <- (readCLTree >=> compile False symbols) "x"
-    y <- (readCLTree >=> compile False symbols) "y"
-    let nf = findNormalForm $ (Branch (Branch f x) y)
-    return nf
-    -- return (Branch (Branch f x) y)
 
 hardcodedSymbols :: CLSymbolMap
 hardcodedSymbols =
@@ -237,16 +234,6 @@ printResult (Left l) = putStrLn ("Error! " ++ l)
 main = do
     args <- getArgs
 
-    {-
-    putStrLn ""
-    putStrLn "== Unittest. =="
-    case unitTest of
-        Right tree -> putStrLn . showCLTreeCompact $ tree
-        Left str   -> putStrLn str
-
-    putStrLn ""
-    putStrLn "== Parsing command line combinator string. =="
-    -}
     let inputCombinator  = args !! 0
     let result = readCLTree inputCombinator
     -- printResult $ result
@@ -258,40 +245,12 @@ main = do
             putStrLn . showCLTreeCompact $ tree
             case compile False hardcodedSymbols tree of
                 Right compiledTree -> do
-                    mapM_ (\n -> putStrLn . showCLTreeCompact . compactWithSymbols hardcodedSymbols . (!!  n) . (iterate reduceTree) $ compiledTree) [0..100]
+                    mapM_ (\n -> putStrLn . showCLTreeCompact . compactWithSymbols hardcodedSymbols . (!!  n) . (iterate reduceTree) $ compiledTree) [0..200]
 
-    {-
-    putStrLn ""
-    putStrLn "== Church encoding test. =="
-    let churchTest = do
-        symbols <- (
-            (loadSymbol 'A' "S(K(SI))(S(KK)I)") >=>
-            (loadSymbol 'B' "S(KS)K")
-            ) Map.empty
-        n3 <- (readCLTree >=> compile False symbols) "((SB)((SB)((SB)(KI))))"
-        return . findNormalForm $ (Branch (Branch n3 (Leaf 'x')) (Leaf 'y'))
-
-    case churchTest of
-        Right tree -> putStrLn . showCLTreeCompact $ tree
-        Left str -> putStrLn str
-    -}
 
 {-
 
-Argument swap.
-./Combinator.exe "S(K(SI))(S(KK)I)xy"
-Church #3 application.
-./Combinator.exe "(SB)((SB)((SB)(KI)))xy"
-
-     
-(((S(KI))x)y)
-S(KI)xy
-
-((SK)I) = SKI
-(S(KI)) = S(KI)
-
-(S)((KI)(SB))II
-
+-- Plans for command line flags
 Combinator.exe --symbol B "((S(KS))K)" --symbol A "((S(K(SI)))((S(KK))I))" --compact --nf "((SB)((SB)((SB)(KI))))"
 Combinator.exe --symbol B "((S(KS))K)" --full --step 2 "((SB)((SB)((SB)(KI))))"
 

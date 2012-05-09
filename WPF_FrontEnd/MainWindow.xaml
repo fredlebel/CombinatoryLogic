@@ -9,38 +9,54 @@
             <RowDefinition Height="auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        
-        <Grid Grid.Row="0">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="auto" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
-            <TextBlock Grid.Row="0" Text="Symbols"/>
-            <TextBox Grid.Row="1" Name="Symbols" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" />
-        </Grid>
+
+        <Border BorderBrush="Blue" BorderThickness="2" Grid.Row="0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="Symbols" FontWeight="Bold" Background="#FFeeeeff"/>
+                <TextBox Grid.Row="1" Name="Symbols"
+                         HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                         Background="#FFeeeeff"
+                         FontFamily="Consolas"/>
+            </Grid>
+        </Border>
 
         <GridSplitter Grid.Row="1"
             HorizontalAlignment="Stretch"
             ResizeBehavior="PreviousAndNext"
             Height="8" Background="#FFBCBCBC"/>
 
-        <Grid Grid.Row="2">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="auto" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
-            <TextBlock Grid.Row="0" Text="Current term"/>
-            <TextBox Grid.Row="1" Name="CurrentTerm" TextChanged="CurrentTerm_TextChanged" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" />
-        </Grid>
+        <Border BorderBrush="Green" BorderThickness="2" Grid.Row="2">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="Current term" FontWeight="Bold" Background="#FFeeffee"/>
+                <TextBox Grid.Row="1" Name="CurrentTerm"
+                         TextChanged="CurrentTerm_TextChanged"
+                         HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                         Background="#FFeeffee"
+                         FontFamily="Consolas"/>
+            </Grid>
+        </Border>
 
-        <Grid Grid.Row="3">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="auto" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
-            <TextBlock Grid.Row="0" Text="Output"/>
-            <TextBox Grid.Row="1" Name="Output" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" />
-        </Grid>
+        <Border BorderBrush="Red" BorderThickness="2" Grid.Row="3">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="Output" FontWeight="Bold" Background="#FFffeeee"/>
+                <TextBox Grid.Row="1" Name="Output"
+                         HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                         Background="#FFffeeee" IsReadOnly="True"
+                         FontFamily="Consolas"/>
+            </Grid>
+        </Border>
 
     </Grid>
 </Window>
