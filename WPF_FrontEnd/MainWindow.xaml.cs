@@ -24,6 +24,7 @@ namespace WPF_FrontEnd
         public MainWindow()
         {
             InitializeComponent();
+            Output.InitializeColorScheme();
         }
 
         private void CurrentTerm_TextChanged(object sender, TextChangedEventArgs e)

@@ -1,6 +1,7 @@
 ﻿<Window x:Class="WPF_FrontEnd.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ns="clr-namespace:WPF_FrontEnd"
         Title="MainWindow" Height="350" Width="525">
     <Grid>
         <Grid.RowDefinitions>
@@ -51,10 +52,11 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Text="Output" FontWeight="Bold" Background="#FFffeeee"/>
-                <TextBox Grid.Row="1" Name="Output"
+                <ns:ColoredCombinatorTextBlock Grid.Row="1" x:Name="Output"/>
+                <!--TextBox Grid.Row="1" Name="Output"
                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
                          Background="#FFffeeee" IsReadOnly="True"
-                         FontFamily="Consolas"/>
+                         FontFamily="Consolas"/-->
             </Grid>
         </Border>
 

@@ -38,35 +38,6 @@ data CLTree = Branch CLTree CLTree | Leaf Char
 isCombinator :: Char -> Bool
 isCombinator c = isAscii c && (isLetter c || isDigit c)
 
-{-
--- Converts a string to a CLTree.  String must be in full parantheses format.
-parse :: String -> Either String CLTree
-parse str = do
-    -- TODO, maybe validate that the returned string is empty.
-    (_, tree) <- parseCombinator str
-    return (tree)
-
-parseCombinator :: String -> Either String (String, CLTree)
-parseCombinator (c:cs)
-    | isAscii c && isLetter c = Right (cs, Leaf c)
-    | c == '('  = parseBranch (c:cs)
-    | otherwise = Left ("Unexpected leading character '" ++ [c] ++ "' in: " ++ (c:cs))
-
-stripChar :: Char -> String -> Either String String
-stripChar ch [] = Left ("Unexpected end of string, expected '" ++ [ch] ++ "'")
-stripChar ch (c:cs)
-    | c == ch   = Right cs
-    | otherwise = Left ("Unexpected leading character in \"" ++ (c:cs) ++ "\", expected '" ++ [ch] ++ "'")
-
-parseBranch :: String -> Either String (String, CLTree)
-parseBranch str = do
-    str <- stripChar '(' str
-    (str, leftValue) <- parseCombinator str
-    (str, rightValue) <- parseCombinator str
-    str <- stripChar ')' str
-    return (str, Branch leftValue rightValue)
--}
-
 -- Converts a string to a CLTree.  String can be in minimal parantheses format.
 readCLTree :: String -> Either String CLTree
 readCLTree str = do
