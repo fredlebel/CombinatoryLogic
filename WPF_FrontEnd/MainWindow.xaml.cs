@@ -13,6 +13,7 @@ using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Diagnostics;
 using System.IO;
+using System.Text.RegularExpressions;
 
 namespace WPF_FrontEnd
 {
@@ -27,18 +28,38 @@ namespace WPF_FrontEnd
             Output.InitializeColorScheme();
         }
 
-        private void CurrentTerm_TextChanged(object sender, TextChangedEventArgs e)
+        private void ExecuteBackend()
         {
-            var textBox = sender as TextBox;
+            if (!IsInitialized)
+                return;
+
+            string arguments = "";
+
+            if (OptSKI.IsChecked.Value)
+                arguments += "--SKI ";
+            if (OptParentheses.IsChecked.Value)
+                arguments += "--show_parentheses ";
+            if (OptDefaultCombinators.IsChecked.Value)
+                arguments += "--use_predefined_symbols ";
+
+            // Append the user defined symbols
+            foreach (var line in Regex.Split(Combinators.Text, "\r\n"))
+            {
+                if (String.IsNullOrEmpty(line))
+                    continue;
+                arguments += "--symbol \"" + line + "\" ";
+            }
+
+            arguments += "-c \"" + Input.Text + "\"";
 
             var psi = new ProcessStartInfo
-                {
-                    FileName = @"C:\Code\Haskell\CombinatoryLogic\Combinator.exe",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    Arguments = textBox.Text,
-                    CreateNoWindow = true,
-                };
+            {
+                FileName = @"C:\Code\Haskell\CombinatoryLogic\Combinator.exe",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                Arguments = arguments,
+                CreateNoWindow = true,
+            };
 
             using (var process = Process.Start(psi))
             {
@@ -47,6 +68,21 @@ namespace WPF_FrontEnd
                     Output.Text = reader.ReadToEnd();
                 }
             }
+        }
+
+        private void CurrentTerm_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            ExecuteBackend();
+        }
+
+        private void Combinators_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            ExecuteBackend();
+        }
+
+        private void Opt_CheckedChanged(object sender, RoutedEventArgs e)
+        {
+            ExecuteBackend();
         }
     }
 }

@@ -1,4 +1,5 @@
 import System
+import System.Console.GetOpt
 import Data.Char
 import qualified Data.Map as Map
 import Control.Monad.Error
@@ -27,8 +28,8 @@ findFirstKey toFind map = Map.foldrWithKey keyFinder Nothing map
     where keyFinder key value acc
             | toFind == value   = Just key
             | otherwise         = acc
-    
-    
+
+
 -- ================================================================== --
 
 -- Binary tree representing a CL fragment
@@ -114,7 +115,7 @@ compactWithSymbols symbols tree@(Branch l r) =
     case findFirstKey tree symbols of
         Just ch -> Leaf ch
         Nothing -> Branch (compactWithSymbols symbols l) (compactWithSymbols symbols r)
-    
+
 -- Loads a combinator symbol.
 -- Once loaded that symbol can be used in future combinators.
 loadSymbol :: Char -> String -> CLSymbolMap -> Either String CLSymbolMap
@@ -161,69 +162,150 @@ hardcodedSymbols =
     case result of
         Right symbols -> symbols
     where
-        result = (
+        result = return Map.empty
             -- Bxyz = x(yz)
-            (loadSymbol 'B' "S(KS)K") >=>
+            >>= (loadSymbol 'B' "S(KS)K")
             -- Cxyz = xzy
-            (loadSymbol 'C' "S(BBS)(KK)") >=>
+            >>= (loadSymbol 'C' "S(BBS)(KK)")
             -- Wxy = xyy
-            (loadSymbol 'W' "SS(KI)") >=>
+            >>= (loadSymbol 'W' "SS(KI)")
             -- Ufx = x(ffx)
-            (loadSymbol 'U' "(S(K(SI))(SII))") >=>
+            >>= (loadSymbol 'U' "(S(K(SI))(SII))")
             -- Y combinator, Yx = x(Yx)
-            (loadSymbol 'Y' "UU") >=>
+            >>= (loadSymbol 'Y' "UU")
             -- Txy = yx
-            (loadSymbol 'T' "S(K(SI))(S(KK)I)") >=>
+            >>= (loadSymbol 'T' "S(K(SI))(S(KK)I)")
             -- Pxyz = z(xy)
-            (loadSymbol 'P' "BT") >=>
+            >>= (loadSymbol 'P' "BT")
             -- Dxy0 = x, Dxy1 = y
-            (loadSymbol 'D' "(S(K(S(S(KS)(S(K(SI))(S(KK)K)))))(S(KK)K))") >=>
-            (loadSymbol '0' "(KI)") >=>
-            (loadSymbol '1' "SB(KI)") >=>
-            (loadSymbol '2' "SB(SB(KI))") >=>
-            (loadSymbol '3' "SB(SB(SB(KI)))") >=>
-            (loadSymbol '4' "SB(SB(SB(SB(KI))))") >=>
-            (loadSymbol '5' "SB(SB(SB(SB(SB(KI)))))") >=>
-            (loadSymbol '6' "SB(SB(SB(SB(SB(SB(KI))))))") >=>
-            (loadSymbol '7' "SB(SB(SB(SB(SB(SB(SB(KI)))))))") >=>
-            (loadSymbol '8' "SB(SB(SB(SB(SB(SB(SB(SB(KI))))))))") >=>
-            (loadSymbol '9' "SB(SB(SB(SB(SB(SB(SB(SB(SB(KI)))))))))") >=>
-            
+            >>= (loadSymbol 'D' "(S(K(S(S(KS)(S(K(SI))(S(KK)K)))))(S(KK)K))")
+            >>= (loadSymbol '0' "(KI)")
+            >>= (loadSymbol '1' "SB(KI)")
+            >>= (loadSymbol '2' "SB(SB(KI))")
+            >>= (loadSymbol '3' "SB(SB(SB(KI)))")
+            >>= (loadSymbol '4' "SB(SB(SB(SB(KI))))")
+            >>= (loadSymbol '5' "SB(SB(SB(SB(SB(KI)))))")
+            >>= (loadSymbol '6' "SB(SB(SB(SB(SB(SB(KI))))))")
+            >>= (loadSymbol '7' "SB(SB(SB(SB(SB(SB(SB(KI)))))))")
+            >>= (loadSymbol '8' "SB(SB(SB(SB(SB(SB(SB(SB(KI))))))))")
+            >>= (loadSymbol '9' "SB(SB(SB(SB(SB(SB(SB(SB(SB(KI)))))))))")
+
             -- Q = \yv.D (succ(v0)) (y(v0)(v1))
-            (loadSymbol 'Q' "(S(K(S(S(KD)(S(K(SB))(SI(K0))))))(S(S(KS)(S(S(KS)K)(K((SI(K0))))))(K((SI(K1))))))") >=>
+            >>= (loadSymbol 'Q' "(S(K(S(S(KD)(S(K(SB))(SI(K0))))))(S(S(KS)(S(S(KS)K)(K((SI(K0))))))(K((SI(K1))))))")
             -- R = \xyu.u(Qy)(D0x)1
             -- Rxy0 = x
             -- Rxy(k+1) = yk(Rxyk)
-            (loadSymbol 'R' "(S(S(KS)(S(K(S(KS)))(S(K(S(S(KS)(S(K(SI))(S(KK)Q)))))(S(KK)(S(KK)(D0))))))(K(K(K1))))")
-            
-            ) Map.empty
+            >>= (loadSymbol 'R' "(S(S(KS)(S(K(S(KS)))(S(K(S(S(KS)(S(K(SI))(S(KK)Q)))))(S(KK)(S(KK)(D0))))))(K(K(K1))))")
 
-printResult :: (Show r) => Either String r -> IO()
-printResult (Right r) = print r
-printResult (Left l) = putStrLn ("Error! " ++ l)
+-- Reduces a combinator for a given number of rounds or until it reaches a normal form.
+runCombinator :: Int -> (CLTree -> String) -> CLTree -> String
+runCombinator 0 outputFn tree = (outputFn tree) ++ "\n..."
+runCombinator iterationCount outputFn tree =
+    if nextTree == tree
+        then output
+        else output ++ "\n" ++ runCombinator (iterationCount - 1) outputFn nextTree
+    where
+        nextTree = reduceTree tree
+        output = outputFn tree
+    -- Stop if reached normal form.
 
+    
+-- Program entrypoint.
 main = do
     args <- getArgs
 
-    let inputCombinator  = args !! 0
-    let result = readCLTree inputCombinator
-    -- printResult $ result
+    case getOpt RequireOrder options args of
+        ([], [], []) -> putStrLn $ usageInfo programHeader options
+        (actions, nonOpts, msgs) -> do
+            -- Execute all option functions, returning the final options.
+            opts <- foldl (>>=) (return defaultOptions) actions
 
-    case result of
-        (Left str) -> putStrLn str
-        (Right tree) -> do
-            putStrLn . showCLTree $ tree
-            putStrLn . showCLTreeCompact $ tree
-            case compile False hardcodedSymbols tree of
-                Right compiledTree -> do
-                    mapM_ (\n -> putStrLn . showCLTreeCompact . compactWithSymbols hardcodedSymbols . (!!  n) . (iterate reduceTree) $ compiledTree) [0..200]
+            let Options { optSymbols = symbols,
+                          optCompactFn = compactFn,
+                          optPrintFn = printFn,
+                          optCombinator = tree} = opts
 
+            case opts of
+                Options {optCombinator = Nothing} -> do { putStrLn "Must define combinator argument."; exitWith $ ExitFailure 1}
+                Options {
+                    optSymbols = symbols,
+                    optCompactFn = compactFn,
+                    optPrintFn = printFn,
+                    optCombinator = Just tree } ->
+                        putStrLn . runCombinator 200 (printFn . compactFn symbols) $ tree
+
+
+-- Dealing with program arguments and parsing them.
+                
+data Options = Options {
+        optSymbols :: CLSymbolMap,
+        optCompactFn :: (CLSymbolMap -> CLTree -> CLTree),
+        optPrintFn :: (CLTree -> String),
+        optCombinator :: Maybe CLTree
+    }
+
+defaultOptions :: Options
+defaultOptions = Options {
+        optSymbols = Map.empty,
+        optCompactFn = compactWithSymbols,
+        optPrintFn = showCLTreeCompact,
+        optCombinator = Nothing
+    }
+
+options :: [OptDescr (Options -> IO Options)]
+options = [
+        Option ['v'] ["version"]                (NoArg showVersion)                     "show version number",
+        Option ['s'] ["symbol"]                 (ReqArg defineSymbol "SYMBOL")          "define a symbol and a combinator, ex: \"B:S(KS)K\"",
+        Option ['S'] ["use_predefined_symbols"] (NoArg usePredefinedSymbols)            "use the predefined symbols",
+        Option ['L'] ["SKI"]                    (NoArg showSKIOnly)                     "shows only SKI combinators, no symbols",
+        Option ['P'] ["show_parentheses"]       (NoArg showAllParentheses)              "show full parentheses, ex: \"((SK)I)\"",
+        Option ['c'] ["combinator"]             (ReqArg defineCombinator "COMBINATOR")  "combinator to reduce"
+    ]
+
+programHeader = "Combinatory Logic Reducer v0.1 [Frederic LeBel : May 10th, 2012]"
+
+showVersion :: Options -> IO Options
+showVersion _ = do
+    putStrLn programHeader
+    exitWith ExitSuccess
+
+defineSymbol :: String -> Options -> IO Options
+defineSymbol symbolOptStr opt@(Options {optSymbols = symbols}) =
+    case splitSymbolOpt symbolOptStr of
+        Left str -> do
+            putStrLn str
+            exitWith $ ExitFailure 1
+        Right (ch, symbolStr) ->
+            case loadSymbol ch symbolStr symbols of
+                Right newSymbols -> return $ opt {optSymbols = newSymbols}
+                Left str -> do
+                    putStrLn str
+                    exitWith $ ExitFailure 1
+    where
+        splitSymbolOpt (c:':':cs) = Right (c, cs)
+        splitSymbolOpt s = Left $ "Unrecognized symbol option: \"" ++ s ++ "\"."
+
+
+usePredefinedSymbols :: Options -> IO Options
+usePredefinedSymbols opt@(Options {optSymbols = symbols}) =
+    return $ opt {optSymbols = Map.union symbols hardcodedSymbols}
+
+showSKIOnly :: Options -> IO Options
+showSKIOnly opt = return $ opt { optCompactFn = (\_ -> id) }
+
+
+showAllParentheses :: Options -> IO Options
+showAllParentheses opt = return $ opt {optPrintFn = showCLTree}
+
+defineCombinator :: String -> Options -> IO Options
+defineCombinator combinatorStr opt@(Options {optSymbols = symbols})  =
+    case return combinatorStr >>= readCLTree >>= compile False symbols of
+        Right tree -> return $ opt {optCombinator = Just tree}
+        Left str -> do
+            putStrLn str
+            exitWith $ ExitFailure 1
 
 {-
-
--- Plans for command line flags
-Combinator.exe --symbol B "((S(KS))K)" --symbol A "((S(K(SI)))((S(KK))I))" --compact --nf "((SB)((SB)((SB)(KI))))"
-Combinator.exe --symbol B "((S(KS))K)" --full --step 2 "((SB)((SB)((SB)(KI))))"
 
 -- Manually deriving the D combinator since I couldn't find it online.
 [\xyz.z(Ky)x]
