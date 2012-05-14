@@ -29,11 +29,18 @@ findFirstKey toFind map = Map.foldrWithKey keyFinder Nothing map
             | toFind == value   = Just key
             | otherwise         = acc
 
+consume :: Char -> String -> Either String String
+consume ch [] = Left ("Expected '" ++ [ch] ++ "', got end of string.")
+consume ch (c:cs)
+    | ch == c   = Right cs
+    | otherwise = Left ("Unexpected leading character '" ++ [c] ++ "' in: " ++ (c:cs))
 
 -- ================================================================== --
 
 -- Binary tree representing a CL fragment
-data CLTree = Branch CLTree CLTree | Leaf Char
+data CLTree = Branch CLTree CLTree | -- An application
+              Leaf Char |            -- A single combinator symbol
+              Point Char CLTree      -- An abstraction
     deriving (Show, Eq)
 
 isCombinator :: Char -> Bool
@@ -42,14 +49,11 @@ isCombinator c = isAscii c && (isLetter c || isDigit c)
 -- Converts a string to a CLTree.  String can be in minimal parantheses format.
 readCLTree :: String -> Either String CLTree
 readCLTree str = do
-    if count '(' str /= count ')' str
-        then Left ("Parentheses mismatch in \"" ++ str ++ "\"")
-        else do
-            (remainingStr, tree) <- readCLTreeLeft str
-            -- Validate that the returned string is empty.
-            if null remainingStr
-                then return tree
-                else Left ("Unexpected trailing characters \"" ++ remainingStr ++ "\"")
+    (remainingStr, tree) <- readCLTreeLeft str
+    -- Validate that the returned string is empty.
+    if null remainingStr
+        then return tree
+        else Left ("Unexpected trailing characters \"" ++ remainingStr ++ "\"")
 
 readCLTreeLeft :: String -> Either String (String, CLTree)
 readCLTreeLeft [] = Left "Empty combinator string."
@@ -62,13 +66,21 @@ readCLTreeLeft (c:cs)
         readCLTreeRight leftFragment cs
     -- If it's the start of parantheses.
     | c == '('  = do
-        (cs, leftFragment) <- readCLTreeLeft cs
+        (cs, leftFragment) <- readCLTreeSubTree cs
+        -- Continue parsing the string, now building to the right.
+        readCLTreeRight leftFragment cs
+    | c == '[' = do
+        (cs, leftFragment) <- readCLTreePoint cs
         -- Continue parsing the string, now building to the right.
         readCLTreeRight leftFragment cs
     | otherwise = Left ("Unexpected leading character '" ++ [c] ++ "' in: " ++ (c:cs))
+            
 
 readCLTreeRight :: CLTree -> String -> Either String (String, CLTree)
 readCLTreeRight leftFragment [] = return ([], leftFragment)
+-- Parantheses and brackets roll up the parsing tree
+readCLTreeRight leftFragment (')':cs) = return (')':cs, leftFragment)
+readCLTreeRight leftFragment (']':cs) = return (']':cs, leftFragment)
 readCLTreeRight leftFragment (c:cs)
     -- If it's a leaf.
     | isCombinator c = do
@@ -78,14 +90,37 @@ readCLTreeRight leftFragment (c:cs)
         readCLTreeRight tree cs
     -- If it's the start of parantheses.
     | c == '('  = do
-        (cs, rightFragment) <- readCLTreeLeft cs
+        (cs, rightFragment) <- readCLTreeSubTree cs
         -- Create a new branch with this fragment on the right side.
         let tree = Branch leftFragment rightFragment
         -- Continue parsing the string.
         readCLTreeRight tree cs
-    | c == ')'  = return (cs, leftFragment)
+    -- If it's the start of an abstraction.
+    | c == '['  = do
+        (cs, rightFragment) <- readCLTreePoint cs
+        -- Create a new branch with this fragment on the right side.
+        let tree = Branch leftFragment rightFragment
+        -- Continue parsing the string, now building to the right.
+        readCLTreeRight tree cs
     | otherwise = Left ("Unexpected leading character '" ++ [c] ++ "' in: " ++ (c:cs))
 
+-- Reads a CLTree in parantheses
+readCLTreeSubTree :: String -> Either String (String, CLTree)
+readCLTreeSubTree [] = Left "Unexpected end of combinator string."
+readCLTreeSubTree str = do
+        (cs, subTree) <- readCLTreeLeft str
+        cs <- consume ')' cs
+        return $ (cs, subTree)
+    
+-- Reads an abstraction
+readCLTreePoint :: String -> Either String (String, CLTree)
+readCLTreePoint [] = Left "Unexpected end of combinator string."
+readCLTreePoint (ch:'.':cs) = do
+        (cs, subTree) <- readCLTreeLeft cs
+        cs <- consume ']' cs
+        let tree = Point ch subTree
+        return $ (cs, tree)
+readCLTreePoint (c:cs) = Left ("Unexpected leading character in abstraction '" ++ [c] ++ "' in: " ++ (c:cs))
 
 
 -- Symbol lookup.
@@ -105,12 +140,17 @@ compile strict symbols (Branch l r) = do
     newL <- compile strict symbols l
     newR <- compile strict symbols r
     return $ Branch newL newR
+compile strict symbols (Point ch tree) = do
+    newTree <- compile strict symbols tree
+    return $ Point ch newTree
+    
 
 -- Compacts a tree composed of only SKI using a symbol map.
 -- Effectively the opposite of the function compile.
 -- Starts from the top of the tree so it will always compact to the biggest symbol.
 compactWithSymbols :: CLSymbolMap -> CLTree -> CLTree
 compactWithSymbols symbols tree@(Leaf _) = tree
+compactWithSymbols symbols tree@(Point ch subTree) = Point ch (compactWithSymbols symbols subTree)
 compactWithSymbols symbols tree@(Branch l r) =
     case findFirstKey tree symbols of
         Just ch -> Leaf ch
@@ -121,7 +161,8 @@ compactWithSymbols symbols tree@(Branch l r) =
 loadSymbol :: Char -> String -> CLSymbolMap -> Either String CLSymbolMap
 loadSymbol ch str symbols = do
     tree <- readCLTree str
-    normalizedTree <- compile True symbols tree
+    let cleanTree = convertAllAbstractions tree
+    normalizedTree <- compile True symbols cleanTree
     return $ Map.insert ch normalizedTree symbols
 
 -- CLTree reductions
@@ -136,6 +177,35 @@ reduceTree (Branch (Branch (Branch (Leaf 'S') x) y) z) = (Branch (Branch x z) (B
 reduceTree (Leaf x) = (Leaf x)
 -- Branch, reduce both sides
 reduceTree (Branch l r) = Branch (reduceTree l) (reduceTree r)
+-- An abstraction
+reduceTree tree@(Point _ _) = convertFromAbstraction tree
+
+
+-- Abstraction conversion.  Converts [x.xSx] -> (S(SI(KS))I)
+convertFromAbstraction :: CLTree -> CLTree
+convertFromAbstraction (Point ch tree) = doConversion ch tree
+    where   doConversion ch (Branch l r)
+                -- [x.M] -> KM if ch not FV(M)
+                | not (fv ch l || fv ch r)  = Branch (Leaf 'K') (Branch l r)
+                -- Eta transformation. [x.Ux] -> U
+                | not (fv ch l) && r == (Leaf ch)   = l
+                -- [x.UV] -> S[x.U][x.V] where x FV(U) || FV(V)
+                | otherwise    = Branch (Branch (Leaf 'S') (Point ch l)) (Point ch r)
+            doConversion ch (Leaf x)
+                | ch == x   = Leaf 'I'
+                | otherwise = Branch (Leaf 'K') (Leaf x)
+            doConversion ch tree@(Point _ _) = Point ch (convertFromAbstraction tree)
+            -- Checks if a given character is a free variable in a tree.
+            fv ch (Leaf x) = ch == x
+            fv ch (Branch l r) = (fv ch l) || (fv ch r)
+            fv ch (Point _ x) = fv ch x
+
+convertAllAbstractions :: CLTree -> CLTree
+convertAllAbstractions tree = if newTree == tree then tree else convertAllAbstractions newTree
+    where   doRemoval (Branch l r) = Branch (doRemoval l) (doRemoval r)
+            doRemoval (Leaf ch) = Leaf ch
+            doRemoval tree@(Point _ _) = convertFromAbstraction tree
+            newTree = doRemoval tree
 
 -- Reduces the tree until it no longer changes.
 -- Can loop forever if the tree has no normal forms.
@@ -149,6 +219,7 @@ findNormalForm tree = if tree == newTree then tree else findNormalForm newTree
 showCLTree :: CLTree -> String
 showCLTree (Leaf c) = [c]
 showCLTree (Branch l r) = "(" ++ (showCLTree l) ++ (showCLTree r) ++ ")"
+showCLTree (Point ch subTree) = "[" ++ [ch] ++ "." ++ (showCLTree subTree) ++ "]"
 
 -- Converts a CLTree into a string representation with minimal parentheses.
 -- That means only right branches are enclosed in parentheses.
@@ -156,6 +227,7 @@ showCLTreeCompact :: CLTree -> String
 showCLTreeCompact (Leaf c) = [c]
 showCLTreeCompact (Branch l r@(Branch _ _)) = (showCLTreeCompact l) ++ "(" ++ (showCLTreeCompact r) ++ ")"
 showCLTreeCompact (Branch l r)              = (showCLTreeCompact l) ++        (showCLTreeCompact r)
+showCLTreeCompact (Point ch subTree)        = "[" ++ [ch] ++ "." ++ (showCLTreeCompact subTree) ++ "]"
 
 hardcodedSymbols :: CLSymbolMap
 hardcodedSymbols =
@@ -219,11 +291,6 @@ main = do
         (actions, nonOpts, msgs) -> do
             -- Execute all option functions, returning the final options.
             opts <- foldl (>>=) (return defaultOptions) actions
-
-            let Options { optSymbols = symbols,
-                          optCompactFn = compactFn,
-                          optPrintFn = printFn,
-                          optCombinator = tree} = opts
 
             case opts of
                 Options {optCombinator = Nothing} -> do { putStrLn "Must define combinator argument."; exitWith $ ExitFailure 1}

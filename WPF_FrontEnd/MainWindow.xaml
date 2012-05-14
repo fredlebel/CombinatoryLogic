@@ -2,13 +2,13 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ns="clr-namespace:WPF_FrontEnd"
-        Title="Combinator Play" Height="350" Width="525">
+        Title="Combinator Play" WindowStartupLocation="CenterScreen">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="100" MinHeight="50" />
             <RowDefinition Height="auto" />
             <RowDefinition Height="auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="*" MinHeight="50" />
             <RowDefinition Height="auto" />
         </Grid.RowDefinitions>
 
