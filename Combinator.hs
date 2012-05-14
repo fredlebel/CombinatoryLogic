@@ -33,18 +33,27 @@ consume :: Char -> String -> Either String String
 consume ch [] = Left ("Expected '" ++ [ch] ++ "', got end of string.")
 consume ch (c:cs)
     | ch == c   = Right cs
-    | otherwise = Left ("Unexpected leading character '" ++ [c] ++ "' in: " ++ (c:cs))
+    | otherwise = Left ("Unexpected leading character '" ++ [c] ++ "' in: " ++ (c:cs) ++ " expected:" ++ [ch])
 
 -- ================================================================== --
 
 -- Binary tree representing a CL fragment
 data CLTree = Branch CLTree CLTree | -- An application
-              Leaf Char |            -- A single combinator symbol
-              Point Char CLTree      -- An abstraction
+              Leaf String |          -- A single combinator symbol
+              Point String CLTree    -- An abstraction
     deriving (Show, Eq)
 
 isCombinator :: Char -> Bool
 isCombinator c = isAscii c && (isLetter c || isDigit c)
+
+-- is str = (length str > 2) && (head str == '{') && (last str == '}')
+
+readIdentifier :: String -> Either String (String, String)
+readIdentifier str
+        | (length identifier > 1) && (head identifier == '{') && (head remainder == '}') = Right (tail remainder, identifier ++ "}")
+        | otherwise = Left ("Failed to extract identifier from \"" ++ str ++ "\" identifier=" ++ identifier ++ " remainder=" ++ remainder)
+    where   (identifier, remainder) = break (== '}') str
+
 
 -- Converts a string to a CLTree.  String can be in minimal parantheses format.
 readCLTree :: String -> Either String CLTree
@@ -61,7 +70,14 @@ readCLTreeLeft (c:cs)
     -- If it's a leaf.
     | isCombinator c = do
         -- Create the starting left fragment.
-        let leftFragment = Leaf c
+        let leftFragment = Leaf [c]
+        -- Continue parsing the string, now building to the right.
+        readCLTreeRight leftFragment cs
+    -- If it's a leaf with an identifier.
+    | c == '{' = do
+        -- Create the starting left fragment.
+        (cs, identifier) <- readIdentifier (c:cs)
+        let leftFragment = Leaf identifier
         -- Continue parsing the string, now building to the right.
         readCLTreeRight leftFragment cs
     -- If it's the start of parantheses.
@@ -85,7 +101,14 @@ readCLTreeRight leftFragment (c:cs)
     -- If it's a leaf.
     | isCombinator c = do
         -- Create a new branch with this leaf on the right side.
-        let tree = Branch leftFragment (Leaf c)
+        let tree = Branch leftFragment (Leaf [c])
+        -- Continue parsing the string.
+        readCLTreeRight tree cs
+    -- If it's a leaf with an identifier.
+    | c == '{' = do
+        -- Create a new branch with this leaf on the right side.
+        (cs, identifier) <- readIdentifier (c:cs)
+        let tree = Branch leftFragment (Leaf identifier)
         -- Continue parsing the string.
         readCLTreeRight tree cs
     -- If it's the start of parantheses.
@@ -118,31 +141,37 @@ readCLTreePoint [] = Left "Unexpected end of combinator string."
 readCLTreePoint (ch:'.':cs) = do
         (cs, subTree) <- readCLTreeLeft cs
         cs <- consume ']' cs
-        let tree = Point ch subTree
+        let tree = Point [ch] subTree
         return $ (cs, tree)
-readCLTreePoint (c:cs) = Left ("Unexpected leading character in abstraction '" ++ [c] ++ "' in: " ++ (c:cs))
+readCLTreePoint str = do
+        (cs, identifier) <- readIdentifier str
+        cs <- consume '.' cs
+        (cs, subTree) <- readCLTreeLeft cs
+        cs <- consume ']' cs
+        let tree = Point identifier subTree
+        return $ (cs, tree)
 
 
 -- Symbol lookup.
-type CLSymbolMap = Map.Map Char CLTree
+type CLSymbolMap = Map.Map String CLTree
 
 -- Compile a higher level CLTree with multiple combinators to one
 -- that only uses SKI combinators.
 compile :: Bool -> CLSymbolMap -> CLTree -> Either String CLTree
-compile strict symbols (Leaf ch)
-    | elem ch "SKI" = Right (Leaf ch) -- Keep as is.
-    | otherwise = case Map.lookup ch symbols of
+compile strict symbols (Leaf sym)
+    | (length sym == 1) && elem (head sym) "SKI" = Right (Leaf sym) -- Keep as is.
+    | otherwise = case Map.lookup sym symbols of
         Just symbolTree -> Right symbolTree
         Nothing         -> if strict
-                           then Left ("Unrecognized combinator character : '" ++ [ch] ++ "'")
-                           else Right (Leaf ch)
+                           then Left ("Unrecognized combinator character : '" ++ sym ++ "'")
+                           else Right (Leaf sym)
 compile strict symbols (Branch l r) = do
     newL <- compile strict symbols l
     newR <- compile strict symbols r
     return $ Branch newL newR
-compile strict symbols (Point ch tree) = do
+compile strict symbols (Point sym tree) = do
     newTree <- compile strict symbols tree
-    return $ Point ch newTree
+    return $ Point sym newTree
     
 
 -- Compacts a tree composed of only SKI using a symbol map.
@@ -158,21 +187,21 @@ compactWithSymbols symbols tree@(Branch l r) =
 
 -- Loads a combinator symbol.
 -- Once loaded that symbol can be used in future combinators.
-loadSymbol :: Char -> String -> CLSymbolMap -> Either String CLSymbolMap
-loadSymbol ch str symbols = do
+loadSymbol :: String -> String -> CLSymbolMap -> Either String CLSymbolMap
+loadSymbol sym str symbols = do
     tree <- readCLTree str
     let cleanTree = convertAllAbstractions tree
     normalizedTree <- compile True symbols cleanTree
-    return $ Map.insert ch normalizedTree symbols
+    return $ Map.insert sym normalizedTree symbols
 
 -- CLTree reductions
 reduceTree :: CLTree -> CLTree
 -- I reduction
-reduceTree (Branch (Leaf 'I') x) = x
+reduceTree (Branch (Leaf ['I']) x) = x
 -- K reduction
-reduceTree (Branch (Branch (Leaf 'K') x) _) = x
+reduceTree (Branch (Branch (Leaf ['K']) x) _) = x
 -- S reduction
-reduceTree (Branch (Branch (Branch (Leaf 'S') x) y) z) = (Branch (Branch x z) (Branch y z))
+reduceTree (Branch (Branch (Branch (Leaf ['S']) x) y) z) = (Branch (Branch x z) (Branch y z))
 -- Any leaf doesn't reduce.
 reduceTree (Leaf x) = (Leaf x)
 -- Branch, reduce both sides
@@ -186,14 +215,14 @@ convertFromAbstraction :: CLTree -> CLTree
 convertFromAbstraction (Point ch tree) = if containsAbstraction tree then Point ch (reduceTree tree) else doConversion ch tree
     where   doConversion ch (Branch l r)
                 -- [x.M] -> KM if ch not FV(M)
-                | not (fv ch l || fv ch r)  = Branch (Leaf 'K') (Branch l r)
+                | not (fv ch l || fv ch r)  = Branch (Leaf ['K']) (Branch l r)
                 -- Eta transformation. [x.Ux] -> U
                 | not (fv ch l) && r == (Leaf ch)   = l
                 -- [x.UV] -> S[x.U][x.V] where x FV(U) || FV(V)
-                | otherwise    = Branch (Branch (Leaf 'S') (Point ch l)) (Point ch r)
+                | otherwise    = Branch (Branch (Leaf ['S']) (Point ch l)) (Point ch r)
             doConversion ch (Leaf x)
-                | ch == x   = Leaf 'I'
-                | otherwise = Branch (Leaf 'K') (Leaf x)
+                | ch == x   = Leaf ['I']
+                | otherwise = Branch (Leaf ['K']) (Leaf x)
             doConversion ch tree@(Point _ _) = Point ch (convertFromAbstraction tree)
             -- Checks if a given character is a free variable in a tree.
             fv ch (Leaf x) = ch == x
@@ -222,17 +251,17 @@ findNormalForm tree = if tree == newTree then tree else findNormalForm newTree
 
 -- Converts a CLTree into a string representation with full parentheses.
 showCLTree :: CLTree -> String
-showCLTree (Leaf c) = [c]
+showCLTree (Leaf c) = c
 showCLTree (Branch l r) = "(" ++ (showCLTree l) ++ (showCLTree r) ++ ")"
-showCLTree (Point ch subTree) = "[" ++ [ch] ++ "." ++ (showCLTree subTree) ++ "]"
+showCLTree (Point ch subTree) = "[" ++ ch ++ "." ++ (showCLTree subTree) ++ "]"
 
 -- Converts a CLTree into a string representation with minimal parentheses.
 -- That means only right branches are enclosed in parentheses.
 showCLTreeCompact :: CLTree -> String
-showCLTreeCompact (Leaf c) = [c]
+showCLTreeCompact (Leaf c) = c
 showCLTreeCompact (Branch l r@(Branch _ _)) = (showCLTreeCompact l) ++ "(" ++ (showCLTreeCompact r) ++ ")"
 showCLTreeCompact (Branch l r)              = (showCLTreeCompact l) ++        (showCLTreeCompact r)
-showCLTreeCompact (Point ch subTree)        = "[" ++ [ch] ++ "." ++ (showCLTreeCompact subTree) ++ "]"
+showCLTreeCompact (Point ch subTree)        = "[" ++ ch ++ "." ++ (showCLTreeCompact subTree) ++ "]"
 
 hardcodedSymbols :: CLSymbolMap
 hardcodedSymbols =
@@ -241,38 +270,38 @@ hardcodedSymbols =
     where
         result = return Map.empty
             -- Bxyz = x(yz)
-            >>= (loadSymbol 'B' "S(KS)K")
+            >>= (loadSymbol "B" "S(KS)K")
             -- Cxyz = xzy
-            >>= (loadSymbol 'C' "S(BBS)(KK)")
+            >>= (loadSymbol "C" "S(BBS)(KK)")
             -- Wxy = xyy
-            >>= (loadSymbol 'W' "SS(KI)")
+            >>= (loadSymbol "W" "SS(KI)")
             -- Ufx = x(ffx)
-            >>= (loadSymbol 'U' "(S(K(SI))(SII))")
+            >>= (loadSymbol "U" "(S(K(SI))(SII))")
             -- Y combinator, Yx = x(Yx)
-            >>= (loadSymbol 'Y' "UU")
+            >>= (loadSymbol "Y" "UU")
             -- Txy = yx
-            >>= (loadSymbol 'T' "S(K(SI))(S(KK)I)")
+            >>= (loadSymbol "T" "S(K(SI))(S(KK)I)")
             -- Pxyz = z(xy)
-            >>= (loadSymbol 'P' "BT")
+            >>= (loadSymbol "P" "BT")
             -- Dxy0 = x, Dxy1 = y
-            >>= (loadSymbol 'D' "(S(K(S(S(KS)(S(K(SI))(S(KK)K)))))(S(KK)K))")
-            >>= (loadSymbol '0' "(KI)")
-            >>= (loadSymbol '1' "SB(KI)")
-            >>= (loadSymbol '2' "SB(SB(KI))")
-            >>= (loadSymbol '3' "SB(SB(SB(KI)))")
-            >>= (loadSymbol '4' "SB(SB(SB(SB(KI))))")
-            >>= (loadSymbol '5' "SB(SB(SB(SB(SB(KI)))))")
-            >>= (loadSymbol '6' "SB(SB(SB(SB(SB(SB(KI))))))")
-            >>= (loadSymbol '7' "SB(SB(SB(SB(SB(SB(SB(KI)))))))")
-            >>= (loadSymbol '8' "SB(SB(SB(SB(SB(SB(SB(SB(KI))))))))")
-            >>= (loadSymbol '9' "SB(SB(SB(SB(SB(SB(SB(SB(SB(KI)))))))))")
+            >>= (loadSymbol "D" "(S(K(S(S(KS)(S(K(SI))(S(KK)K)))))(S(KK)K))")
+            >>= (loadSymbol "0" "(KI)")
+            >>= (loadSymbol "1" "SB(KI)")
+            >>= (loadSymbol "2" "SB(SB(KI))")
+            >>= (loadSymbol "3" "SB(SB(SB(KI)))")
+            >>= (loadSymbol "4" "SB(SB(SB(SB(KI))))")
+            >>= (loadSymbol "5" "SB(SB(SB(SB(SB(KI)))))")
+            >>= (loadSymbol "6" "SB(SB(SB(SB(SB(SB(KI))))))")
+            >>= (loadSymbol "7" "SB(SB(SB(SB(SB(SB(SB(KI)))))))")
+            >>= (loadSymbol "8" "SB(SB(SB(SB(SB(SB(SB(SB(KI))))))))")
+            >>= (loadSymbol "9" "SB(SB(SB(SB(SB(SB(SB(SB(SB(KI)))))))))")
 
             -- Q = \yv.D (succ(v0)) (y(v0)(v1))
-            >>= (loadSymbol 'Q' "(S(K(S(S(KD)(S(K(SB))(SI(K0))))))(S(S(KS)(S(S(KS)K)(K((SI(K0))))))(K((SI(K1))))))")
+            >>= (loadSymbol "Q" "(S(K(S(S(KD)(S(K(SB))(SI(K0))))))(S(S(KS)(S(S(KS)K)(K((SI(K0))))))(K((SI(K1))))))")
             -- R = \xyu.u(Qy)(D0x)1
             -- Rxy0 = x
             -- Rxy(k+1) = yk(Rxyk)
-            >>= (loadSymbol 'R' "(S(S(KS)(S(K(S(KS)))(S(K(S(S(KS)(S(K(SI))(S(KK)Q)))))(S(KK)(S(KK)(D0))))))(K(K(K1))))")
+            >>= (loadSymbol "R" "(S(S(KS)(S(K(S(KS)))(S(K(S(S(KS)(S(K(SI))(S(KK)Q)))))(S(KK)(S(KK)(D0))))))(K(K(K1))))")
 
 -- Reduces a combinator for a given number of rounds or until it reaches a normal form.
 runCombinator :: Int -> (CLTree -> String) -> CLTree -> String
@@ -347,15 +376,18 @@ defineSymbol symbolOptStr opt@(Options {optSymbols = symbols}) =
         Left str -> do
             putStrLn str
             exitWith $ ExitFailure 1
-        Right (ch, symbolStr) ->
-            case loadSymbol ch symbolStr symbols of
+        Right (sym, symbolStr) ->
+            case loadSymbol sym symbolStr symbols of
                 Right newSymbols -> return $ opt {optSymbols = newSymbols}
                 Left str -> do
                     putStrLn str
                     exitWith $ ExitFailure 1
     where
-        splitSymbolOpt (c:':':cs) = Right (c, cs)
-        splitSymbolOpt s = Left $ "Unrecognized symbol option: \"" ++ s ++ "\"."
+        splitSymbolOpt (c:':':cs) = Right ([c], cs)
+        splitSymbolOpt str = do
+            (cs, sym) <- readIdentifier str
+            cs <- consume ':' cs
+            return (sym, cs)
 
 
 usePredefinedSymbols :: Options -> IO Options
