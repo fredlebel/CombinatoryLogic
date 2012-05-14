@@ -21,7 +21,6 @@
                 <TextBlock Grid.Row="0" Text="Combinators" FontWeight="Bold" Background="#FFeeeeff"/>
                 <TextBox Grid.Row="1" Name="Combinators"
                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
-                         Background="#FFeeeeff"
                          AcceptsReturn="True"
                          FontFamily="Consolas" TextChanged="Combinators_TextChanged" />
             </Grid>
@@ -42,7 +41,6 @@
                 <TextBox Grid.Row="1" Name="Input"
                          TextChanged="CurrentTerm_TextChanged"
                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
-                         Background="#FFeeffee"
                          FontFamily="Consolas"/>
             </Grid>
         </Border>

@@ -183,7 +183,7 @@ reduceTree tree@(Point _ _) = convertFromAbstraction tree
 
 -- Abstraction conversion.  Converts [x.xSx] -> (S(SI(KS))I)
 convertFromAbstraction :: CLTree -> CLTree
-convertFromAbstraction (Point ch tree) = doConversion ch tree
+convertFromAbstraction (Point ch tree) = if containsAbstraction tree then Point ch (reduceTree tree) else doConversion ch tree
     where   doConversion ch (Branch l r)
                 -- [x.M] -> KM if ch not FV(M)
                 | not (fv ch l || fv ch r)  = Branch (Leaf 'K') (Branch l r)
@@ -199,6 +199,11 @@ convertFromAbstraction (Point ch tree) = doConversion ch tree
             fv ch (Leaf x) = ch == x
             fv ch (Branch l r) = (fv ch l) || (fv ch r)
             fv ch (Point _ x) = fv ch x
+            -- Checks if another abstraction is contained in this abstraction.
+            containsAbstraction (Leaf _) = False
+            containsAbstraction (Branch l r) = (containsAbstraction l) || (containsAbstraction r)
+            containsAbstraction (Point _ _) = True
+            
 
 convertAllAbstractions :: CLTree -> CLTree
 convertAllAbstractions tree = if newTree == tree then tree else convertAllAbstractions newTree
