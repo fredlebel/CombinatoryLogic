@@ -330,16 +330,18 @@ main = do
                 Options {optCombinator = Nothing} -> do { putStrLn "Must define combinator argument."; exitWith $ ExitFailure 1}
                 Options {
                     optSymbols = symbols,
+                    optIterationCount = iterationCount,
                     optCompactFn = compactFn,
                     optPrintFn = printFn,
                     optCombinator = Just tree } ->
-                        putStrLn . runCombinator 200 (printFn . compactFn symbols) $ tree
+                        putStrLn . runCombinator iterationCount (printFn . compactFn symbols) $ tree
 
 
 -- Dealing with program arguments and parsing them.
                 
 data Options = Options {
         optSymbols :: CLSymbolMap,
+        optIterationCount :: Int,
         optCompactFn :: (CLSymbolMap -> CLTree -> CLTree),
         optPrintFn :: (CLTree -> String),
         optCombinator :: Maybe CLTree
@@ -348,6 +350,7 @@ data Options = Options {
 defaultOptions :: Options
 defaultOptions = Options {
         optSymbols = Map.empty,
+        optIterationCount = 200,
         optCompactFn = compactWithSymbols,
         optPrintFn = showCLTreeCompact,
         optCombinator = Nothing
@@ -360,6 +363,7 @@ options = [
         Option ['S'] ["use_predefined_symbols"] (NoArg usePredefinedSymbols)            "use the predefined symbols",
         Option ['L'] ["SKI"]                    (NoArg showSKIOnly)                     "shows only SKI combinators, no symbols",
         Option ['P'] ["show_parentheses"]       (NoArg showAllParentheses)              "show full parentheses, ex: \"((SK)I)\"",
+        Option ['f'] ["no_stop"]                (NoArg doNotStop)                       "reduce until reaching NF, no stop at 200 iterations",
         Option ['c'] ["combinator"]             (ReqArg defineCombinator "COMBINATOR")  "combinator to reduce"
     ]
 
@@ -400,6 +404,9 @@ showSKIOnly opt = return $ opt { optCompactFn = (\_ -> id) }
 
 showAllParentheses :: Options -> IO Options
 showAllParentheses opt = return $ opt {optPrintFn = showCLTree}
+
+doNotStop :: Options -> IO Options
+doNotStop opt = return $ opt {optIterationCount = -1}
 
 defineCombinator :: String -> Options -> IO Options
 defineCombinator combinatorStr opt@(Options {optSymbols = symbols})  =

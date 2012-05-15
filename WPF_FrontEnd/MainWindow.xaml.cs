@@ -41,6 +41,8 @@ namespace WPF_FrontEnd
                 arguments += "--show_parentheses ";
             if (OptDefaultCombinators.IsChecked.Value)
                 arguments += "--use_predefined_symbols ";
+            if (OptNoStop.IsChecked.Value)
+                arguments += "--no_stop ";
 
             // Append the user defined symbols
             foreach (var line in Regex.Split(Combinators.Text, "\r\n"))
@@ -60,6 +62,8 @@ namespace WPF_FrontEnd
                 Arguments = arguments,
                 CreateNoWindow = true,
             };
+
+            CommandLineText.Text = arguments;
 
             using (var process = Process.Start(psi))
             {
