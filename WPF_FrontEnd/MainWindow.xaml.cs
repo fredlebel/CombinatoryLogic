@@ -54,9 +54,13 @@ namespace WPF_FrontEnd
 
             arguments += "-c \"" + Input.Text + "\"";
 
+            var backendPath = System.IO.Path.Combine(
+                System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location),
+                "Combinator.exe");
+
             var psi = new ProcessStartInfo
             {
-                FileName = @"C:\Code\Haskell\CombinatoryLogic\Combinator.exe",
+                FileName = backendPath,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 Arguments = arguments,
