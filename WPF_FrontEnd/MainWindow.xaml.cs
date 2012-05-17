@@ -25,9 +25,14 @@ namespace WPF_FrontEnd
         public MainWindow()
         {
             InitializeComponent();
-            Output.InitializeColorScheme();
+            Output.IsReadOnly = true;
+            Input.TextChanged += ExecuteBackend;
+            Combinators.TextChanged += ExecuteBackend;
         }
 
+        /// <summary>
+        /// Runs the backend with the data from the UI.
+        /// </summary>
         private void ExecuteBackend()
         {
             if (!IsInitialized)
@@ -76,16 +81,6 @@ namespace WPF_FrontEnd
                     Output.Text = reader.ReadToEnd();
                 }
             }
-        }
-
-        private void CurrentTerm_TextChanged(object sender, TextChangedEventArgs e)
-        {
-            ExecuteBackend();
-        }
-
-        private void Combinators_TextChanged(object sender, TextChangedEventArgs e)
-        {
-            ExecuteBackend();
         }
 
         private void Opt_CheckedChanged(object sender, RoutedEventArgs e)

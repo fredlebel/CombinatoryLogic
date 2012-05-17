@@ -8,7 +8,7 @@ Features:
 - Converts abstractions to SKI terms.
 - Long identifiers for multi-character symbols.
 - Predefined well known combinators.
-- Syntax highlighting (currently only for the output).
+- Syntax highlighting.
 - Various options to control how the output is formatted.
 - Output updates realtime as a combinator term is typed.
 

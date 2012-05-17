@@ -24,107 +24,98 @@ namespace WPF_FrontEnd
             InitializeComponent();
         }
 
-        class ColorScheme
-        {
-            public string glyphs;
-            public StringBuilder text = new StringBuilder();
-            public TextBox textBlock;
-        }
-
-        List<ColorScheme> _colorSchemes = new List<ColorScheme>();
-        ColorScheme _defaultScheme;
-        ColorScheme _completeScheme;
-
-        public void InitializeColorScheme()
-        {
-            Func<string, Brush, ColorScheme> makeColorScheme = (str, brush) =>
-                {
-                    var tb = new TextBox()
-                    {
-                        Background = Brushes.Transparent,
-                        Foreground = brush,
-                        FontFamily = new FontFamily("Consolas")
-                    };
-                    return new ColorScheme()
-                    {
-                        glyphs = str,
-                        textBlock = tb
-                    };
-                };
-
-            _colorSchemes.Add(makeColorScheme("()", Brushes.Gray));
-            _colorSchemes.Add(makeColorScheme("S", Brushes.Green));
-            _colorSchemes.Add(makeColorScheme("K", Brushes.Blue));
-            _colorSchemes.Add(makeColorScheme("I", Brushes.Red));
-            _defaultScheme = makeColorScheme("", Brushes.Black);
-            _defaultScheme.textBlock.Background = Brushes.White;
-            _completeScheme = makeColorScheme("", Brushes.Transparent);
-
-            ContentSpace.Children.Add(_defaultScheme.textBlock);
-            foreach (var scheme in _colorSchemes)
-            {
-                ContentSpace.Children.Add(scheme.textBlock);
-            }
-            ContentSpace.Children.Add(_completeScheme.textBlock);
-        }
-
-        private string _text;
         public string Text
         {
             get
             {
-                return _text;
+                return Complete_Box.Text;
             }
             set
             {
-                _text = value;
-
-                // First clear all the text.
-                foreach (var scheme in _colorSchemes)
-                    scheme.text.Clear();
-                _defaultScheme.text.Clear();
-                _completeScheme.text.Clear();
-
-                foreach (char c in _text)
-                {
-                    bool found = false;
-                    foreach (var scheme in _colorSchemes)
-                    {
-                        if (scheme.glyphs.Contains(c))
-                        {
-                            scheme.text.Append(c);
-                            found = true;
-                        }
-                        else if (Char.IsControl(c))
-                        {
-                            scheme.text.Append(c);
-                        }
-                        else
-                        {
-                            scheme.text.Append(' ');
-                        }
-                    }
-
-                    if (!found)
-                        _defaultScheme.text.Append(c);
-                    else if (Char.IsControl(c))
-                    {
-                        _defaultScheme.text.Append(c);
-                    }
-                    else
-                    {
-                        _defaultScheme.text.Append(' ');
-                    }
-                }
-                _completeScheme.text.Append(_text);
-
-                foreach (var scheme in _colorSchemes)
-                {
-                    scheme.textBlock.Text = scheme.text.ToString();
-                }
-                _defaultScheme.textBlock.Text = _defaultScheme.text.ToString();
-                _completeScheme.textBlock.Text = _completeScheme.text.ToString();
+                Complete_Box.Text = value;
             }
+        }
+
+        public bool IsReadOnly
+        {
+            get
+            {
+                return Complete_Box.IsReadOnly;
+            }
+            set
+            {
+                Complete_Box.IsReadOnly = value;
+            }
+        }
+
+        public event Action TextChanged;
+
+        private void Complete_Box_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            var defaultStrb = new StringBuilder(Complete_Box.Text.Length);
+            var s_Strb = new StringBuilder(Complete_Box.Text.Length);
+            var k_Strb = new StringBuilder(Complete_Box.Text.Length);
+            var i_Strb = new StringBuilder(Complete_Box.Text.Length);
+            var paran_Strb = new StringBuilder(Complete_Box.Text.Length);
+
+            var rest_default = new StringBuilder[4] { s_Strb, k_Strb, i_Strb, paran_Strb };
+            var rest_s = new StringBuilder[4] { defaultStrb, k_Strb, i_Strb, paran_Strb };
+            var rest_k = new StringBuilder[4] { s_Strb, defaultStrb, i_Strb, paran_Strb };
+            var rest_i = new StringBuilder[4] { s_Strb, k_Strb, defaultStrb, paran_Strb };
+            var rest_paran = new StringBuilder[4] { s_Strb, k_Strb, i_Strb, defaultStrb };
+
+            foreach (char c in Complete_Box.Text)
+            {
+                StringBuilder strb = null;
+                StringBuilder[] rest = null;
+
+                switch (c)
+                {
+                    case 'S':
+                        strb = s_Strb;
+                        rest = rest_s;
+                        break;
+                    case 'K':
+                        strb = k_Strb;
+                        rest = rest_k;
+                        break;
+                    case 'I':
+                        strb = i_Strb;
+                        rest = rest_i;
+                        break;
+                    case '(':
+                    case ')':
+                        strb = paran_Strb;
+                        rest = rest_paran;
+                        break;
+                    default:
+                        strb = defaultStrb;
+                        rest = rest_default;
+                        break;
+                }
+
+                // Add the character to the right string.
+                strb.Append(c);
+                // Update the rest with white space.
+                foreach (var i in rest)
+                {
+                    if (Char.IsControl(c))
+                        i.Append(c);
+                    else
+                        i.Append(' ');
+                }
+            }
+
+            // Finally update the actual controls.
+            Default_Box.Text = defaultStrb.ToString();
+            S_Box.Text = s_Strb.ToString();
+            K_Box.Text = k_Strb.ToString();
+            I_Box.Text = i_Strb.ToString();
+            Parantheses_Box.Text = paran_Strb.ToString();
+
+            // Notify all listeners
+            if (TextChanged != null)
+                TextChanged();
         }
     }
 }

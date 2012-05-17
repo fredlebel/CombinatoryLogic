@@ -20,10 +20,7 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Text="Combinators" FontWeight="Bold" Background="#FFeeeeff"/>
-                <TextBox Grid.Row="1" Name="Combinators"
-                         HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
-                         AcceptsReturn="True"
-                         FontFamily="Consolas" TextChanged="Combinators_TextChanged" />
+                <ns:ColoredCombinatorTextBlock Grid.Row="1" x:Name="Combinators"/>
             </Grid>
         </Border>
 
@@ -39,10 +36,7 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Text="Current term" FontWeight="Bold" Background="#FFeeffee"/>
-                <TextBox Grid.Row="1" Name="Input"
-                         TextChanged="CurrentTerm_TextChanged"
-                         HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
-                         FontFamily="Consolas"/>
+                <ns:ColoredCombinatorTextBlock Grid.Row="1" x:Name="Input"/>
             </Grid>
         </Border>
 
