@@ -8,11 +8,11 @@
     <Grid>
         <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
             <Grid Name="ContentSpace">
-                <TextBox Name="Default_Box" Foreground="Black" Background="White" FontFamily="Consolas" />
-                <TextBox Name="S_Box" Foreground="Green" Background="Transparent" FontFamily="Consolas" />
-                <TextBox Name="K_Box" Foreground="Blue" Background="Transparent" FontFamily="Consolas" />
-                <TextBox Name="I_Box" Foreground="Red" Background="Transparent" FontFamily="Consolas" />
-                <TextBox Name="Parantheses_Box" Foreground="Gray" Background="Transparent" FontFamily="Consolas" />
+                <TextBox Name="Default_Box" Foreground="Black" Background="White" FontFamily="Consolas" IsReadOnly="True" IsTabStop="False" />
+                <TextBox Name="S_Box" Foreground="Green" Background="Transparent" FontFamily="Consolas" IsReadOnly="True" IsTabStop="False" />
+                <TextBox Name="K_Box" Foreground="Blue" Background="Transparent" FontFamily="Consolas" IsReadOnly="True" IsTabStop="False" />
+                <TextBox Name="I_Box" Foreground="Red" Background="Transparent" FontFamily="Consolas" IsReadOnly="True" IsTabStop="False" />
+                <TextBox Name="Parantheses_Box" Foreground="Gray" Background="Transparent" FontFamily="Consolas" IsReadOnly="True" IsTabStop="False" />
                 <TextBox Name="Complete_Box" Foreground="Transparent" Background="Transparent" FontFamily="Consolas" AcceptsReturn="True" TextChanged="Complete_Box_TextChanged" />
             </Grid>
         </ScrollViewer>
