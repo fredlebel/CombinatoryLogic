@@ -17,19 +17,29 @@ Examples
 
 ### Symbols
 
-    B:S(KS)K
-    Q:(S(K(S(S(KD)(S(K(SB))(SI(K0))))))(S(S(KS)(S(S(KS)K)(K((SI(K0))))))(K((SI(K1))))))
-
+    B=S(KS)K
+    Q=(S(K(S(S(KD)(S(K(SB))(SI(K0))))))(S(S(KS)(S(S(KS)K)(K((SI(K0))))))(K((SI(K1))))))
+    
 ### Abstractions
 
     [x.x(KI)xK]
     [a.[b.[c.c(ab)]]]
 
-
 ### Long identifiers
 
-    {++}:[n.[f.[x.f(nfx)]]]
-    {add}:[{n1}.[{n2}.{n1}{++}{n2}]]
+    {++}=[n.[f.[x.f(nfx)]]]
+    {add}=[{n1}.[{n2}.{n1}{++}{n2}]]
+
+### Reduced symbols
+
+Use the normal form (NF) of a symbol.  Useful for reverse symbol matching when outputting.
+
+For example, the symbol `{24}={mul}64` won't match the NF of `{factorial}4` which is a church number but the NF of `{24}` will.
+So to do symbol matching on the NF of a symbol use the exclamation mark.
+    
+    {24}!{mul}64
+
+Note that this will hang the program if defining a symbol which doesn't have a NF.
 
 ### Predefined combinators
 

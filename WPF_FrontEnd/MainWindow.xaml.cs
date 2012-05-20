@@ -48,6 +48,8 @@ namespace WPF_FrontEnd
                 arguments += "--use_predefined_symbols ";
             if (OptNoStop.IsChecked.Value)
                 arguments += "--no_stop ";
+            if (OptShowLastLine.IsChecked.Value)
+                arguments += "--last ";
 
             // Append the user defined symbols
             foreach (var line in Regex.Split(Combinators.Text, "\r\n"))

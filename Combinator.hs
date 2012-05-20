@@ -4,6 +4,8 @@ import Data.Char
 import qualified Data.Map as Map
 import Control.Monad.Error
 
+programHeader = "Combinatory Logic Reducer v1.0 [Frederic LeBel : May 19th, 2012]"
+
 -- ========== GENERIC FUNCTIONS ========== --
 -- Simple piping function
 a |> f = f a
@@ -90,7 +92,7 @@ readCLTreeLeft (c:cs)
         -- Continue parsing the string, now building to the right.
         readCLTreeRight leftFragment cs
     | otherwise = Left ("Unexpected leading character '" ++ [c] ++ "' in: " ++ (c:cs))
-            
+
 
 readCLTreeRight :: CLTree -> String -> Either String (String, CLTree)
 readCLTreeRight leftFragment [] = return ([], leftFragment)
@@ -134,7 +136,7 @@ readCLTreeSubTree str = do
         (cs, subTree) <- readCLTreeLeft str
         cs <- consume ')' cs
         return $ (cs, subTree)
-    
+
 -- Reads an abstraction
 readCLTreePoint :: String -> Either String (String, CLTree)
 readCLTreePoint [] = Left "Unexpected end of combinator string."
@@ -172,17 +174,17 @@ compile strict symbols (Branch l r) = do
 compile strict symbols (Point sym tree) = do
     newTree <- compile strict symbols tree
     return $ Point sym newTree
-    
+
 
 -- Compacts a tree composed of only SKI using a symbol map.
 -- Effectively the opposite of the function compile.
 -- Starts from the top of the tree so it will always compact to the biggest symbol.
 compactWithSymbols :: CLSymbolMap -> CLTree -> CLTree
 compactWithSymbols symbols tree@(Leaf _) = tree
-compactWithSymbols symbols tree@(Point ch subTree) = Point ch (compactWithSymbols symbols subTree)
+compactWithSymbols symbols tree@(Point sym subTree) = Point sym (compactWithSymbols symbols subTree)
 compactWithSymbols symbols tree@(Branch l r) =
     case findFirstKey tree symbols of
-        Just ch -> Leaf ch
+        Just sym -> Leaf sym
         Nothing -> Branch (compactWithSymbols symbols l) (compactWithSymbols symbols r)
 
 -- Loads a combinator symbol.
@@ -194,6 +196,14 @@ loadSymbol sym str symbols = do
     normalizedTree <- compile True symbols cleanTree
     return $ Map.insert sym normalizedTree symbols
 
+loadReducedSymbol :: String -> String -> CLSymbolMap -> Either String CLSymbolMap
+loadReducedSymbol sym str symbols = do
+    tree <- readCLTree str
+    let cleanTree = convertAllAbstractions tree
+    normalizedTree <- compile True symbols cleanTree
+    let nf = findNormalForm normalizedTree
+    return $ Map.insert sym nf symbols
+    
 -- CLTree reductions
 reduceTree :: CLTree -> CLTree
 -- I reduction
@@ -212,32 +222,32 @@ reduceTree tree@(Point _ _) = convertFromAbstraction tree
 
 -- Abstraction conversion.  Converts [x.xSx] -> (S(SI(KS))I)
 convertFromAbstraction :: CLTree -> CLTree
-convertFromAbstraction (Point ch tree) = if containsAbstraction tree then Point ch (reduceTree tree) else doConversion ch tree
-    where   doConversion ch (Branch l r)
-                -- [x.M] -> KM if ch not FV(M)
-                | not (fv ch l || fv ch r)  = Branch (Leaf ['K']) (Branch l r)
+convertFromAbstraction (Point sym tree) = if containsAbstraction tree then Point sym (reduceTree tree) else doConversion sym tree
+    where   doConversion sym (Branch l r)
+                -- [x.M] -> KM if sym not FV(M)
+                | not (fv sym l || fv sym r)  = Branch (Leaf ['K']) (Branch l r)
                 -- Eta transformation. [x.Ux] -> U
-                | not (fv ch l) && r == (Leaf ch)   = l
+                | not (fv sym l) && r == (Leaf sym)   = l
                 -- [x.UV] -> S[x.U][x.V] where x FV(U) || FV(V)
-                | otherwise    = Branch (Branch (Leaf ['S']) (Point ch l)) (Point ch r)
-            doConversion ch (Leaf x)
-                | ch == x   = Leaf ['I']
+                | otherwise    = Branch (Branch (Leaf ['S']) (Point sym l)) (Point sym r)
+            doConversion sym (Leaf x)
+                | sym == x   = Leaf ['I']
                 | otherwise = Branch (Leaf ['K']) (Leaf x)
-            doConversion ch tree@(Point _ _) = Point ch (convertFromAbstraction tree)
+            doConversion sym tree@(Point _ _) = Point sym (convertFromAbstraction tree)
             -- Checks if a given character is a free variable in a tree.
-            fv ch (Leaf x) = ch == x
-            fv ch (Branch l r) = (fv ch l) || (fv ch r)
-            fv ch (Point _ x) = fv ch x
+            fv sym (Leaf x) = sym == x
+            fv sym (Branch l r) = (fv sym l) || (fv sym r)
+            fv sym (Point _ x) = fv sym x
             -- Checks if another abstraction is contained in this abstraction.
             containsAbstraction (Leaf _) = False
             containsAbstraction (Branch l r) = (containsAbstraction l) || (containsAbstraction r)
             containsAbstraction (Point _ _) = True
-            
+
 
 convertAllAbstractions :: CLTree -> CLTree
 convertAllAbstractions tree = if newTree == tree then tree else convertAllAbstractions newTree
     where   doRemoval (Branch l r) = Branch (doRemoval l) (doRemoval r)
-            doRemoval (Leaf ch) = Leaf ch
+            doRemoval (Leaf sym) = Leaf sym
             doRemoval tree@(Point _ _) = convertFromAbstraction tree
             newTree = doRemoval tree
 
@@ -253,7 +263,7 @@ findNormalForm tree = if tree == newTree then tree else findNormalForm newTree
 showCLTree :: CLTree -> String
 showCLTree (Leaf c) = c
 showCLTree (Branch l r) = "(" ++ (showCLTree l) ++ (showCLTree r) ++ ")"
-showCLTree (Point ch subTree) = "[" ++ ch ++ "." ++ (showCLTree subTree) ++ "]"
+showCLTree (Point sym subTree) = "[" ++ sym ++ "." ++ (showCLTree subTree) ++ "]"
 
 -- Converts a CLTree into a string representation with minimal parentheses.
 -- That means only right branches are enclosed in parentheses.
@@ -261,7 +271,7 @@ showCLTreeCompact :: CLTree -> String
 showCLTreeCompact (Leaf c) = c
 showCLTreeCompact (Branch l r@(Branch _ _)) = (showCLTreeCompact l) ++ "(" ++ (showCLTreeCompact r) ++ ")"
 showCLTreeCompact (Branch l r)              = (showCLTreeCompact l) ++        (showCLTreeCompact r)
-showCLTreeCompact (Point ch subTree)        = "[" ++ ch ++ "." ++ (showCLTreeCompact subTree) ++ "]"
+showCLTreeCompact (Point sym subTree)       = "[" ++ sym ++ "." ++ (showCLTreeCompact subTree) ++ "]"
 
 hardcodedSymbols :: CLSymbolMap
 hardcodedSymbols =
@@ -304,18 +314,18 @@ hardcodedSymbols =
             >>= (loadSymbol "R" "(S(S(KS)(S(K(S(KS)))(S(K(S(S(KS)(S(K(SI))(S(KK)Q)))))(S(KK)(S(KK)(D0))))))(K(K(K1))))")
 
 -- Reduces a combinator for a given number of rounds or until it reaches a normal form.
-runCombinator :: Int -> (CLTree -> String) -> CLTree -> String
-runCombinator 0 outputFn tree = (outputFn tree) ++ "\n..."
+runCombinator :: Int -> (CLTree -> String) -> CLTree -> [String]
+runCombinator 0 outputFn tree = [outputFn tree, "\n..."]
 runCombinator iterationCount outputFn tree =
     if nextTree == tree
-        then output
-        else output ++ "\n" ++ runCombinator (iterationCount - 1) outputFn nextTree
+        then [output]
+        else output:(runCombinator (iterationCount - 1) outputFn nextTree)
     where
         nextTree = reduceTree tree
         output = outputFn tree
     -- Stop if reached normal form.
 
-    
+
 -- Program entrypoint.
 main = do
     args <- getArgs
@@ -333,17 +343,19 @@ main = do
                     optIterationCount = iterationCount,
                     optCompactFn = compactFn,
                     optPrintFn = printFn,
+                    optPutStrFn = putStrFn,
                     optCombinator = Just tree } ->
-                        putStrLn . runCombinator iterationCount (printFn . compactFn symbols) $ tree
+                        putStrFn . runCombinator iterationCount (printFn . compactFn symbols) $ tree
 
 
 -- Dealing with program arguments and parsing them.
-                
+
 data Options = Options {
         optSymbols :: CLSymbolMap,
         optIterationCount :: Int,
         optCompactFn :: (CLSymbolMap -> CLTree -> CLTree),
         optPrintFn :: (CLTree -> String),
+        optPutStrFn :: ([String] -> IO()),
         optCombinator :: Maybe CLTree
     }
 
@@ -353,6 +365,7 @@ defaultOptions = Options {
         optIterationCount = 200,
         optCompactFn = compactWithSymbols,
         optPrintFn = showCLTreeCompact,
+        optPutStrFn = mapM_ putStrLn,
         optCombinator = Nothing
     }
 
@@ -364,10 +377,9 @@ options = [
         Option ['L'] ["SKI"]                    (NoArg showSKIOnly)                     "shows only SKI combinators, no symbols",
         Option ['P'] ["show_parentheses"]       (NoArg showAllParentheses)              "show full parentheses, ex: \"((SK)I)\"",
         Option ['f'] ["no_stop"]                (NoArg doNotStop)                       "reduce until reaching NF, no stop at 200 iterations",
+        Option ['l'] ["last"]                   (NoArg showLastOnly)                    "only show the last line of the reduction",
         Option ['c'] ["combinator"]             (ReqArg defineCombinator "COMBINATOR")  "combinator to reduce"
     ]
-
-programHeader = "Combinatory Logic Reducer v0.1 [Frederic LeBel : May 10th, 2012]"
 
 showVersion :: Options -> IO Options
 showVersion _ = do
@@ -376,22 +388,29 @@ showVersion _ = do
 
 defineSymbol :: String -> Options -> IO Options
 defineSymbol symbolOptStr opt@(Options {optSymbols = symbols}) =
-    case splitSymbolOpt symbolOptStr of
+    case work symbolOptStr of
+        Right newSymbols -> return $ opt {optSymbols = newSymbols}
         Left str -> do
             putStrLn str
             exitWith $ ExitFailure 1
-        Right (sym, symbolStr) ->
-            case loadSymbol sym symbolStr symbols of
-                Right newSymbols -> return $ opt {optSymbols = newSymbols}
-                Left str -> do
-                    putStrLn str
-                    exitWith $ ExitFailure 1
     where
-        splitSymbolOpt (c:':':cs) = Right ([c], cs)
+        work str = do
+            (sym, symbolStr, reduceSymbol) <- splitSymbolOpt str
+            newSymbols <- (if reduceSymbol then loadReducedSymbol else loadSymbol) sym symbolStr symbols
+            return newSymbols
+
+        splitSymbolOpt (c:'=':cs) = Right ([c], cs, False)
+        splitSymbolOpt (c:'!':cs) = Right ([c], cs, True)
         splitSymbolOpt str = do
             (cs, sym) <- readIdentifier str
-            cs <- consume ':' cs
-            return (sym, cs)
+            if head cs == '='
+                then do
+                    cs <- consume '=' cs
+                    return (sym, cs, False)
+                else do
+                    cs <- consume '!' cs
+                    return (sym, cs, True)
+                
 
 
 usePredefinedSymbols :: Options -> IO Options
@@ -407,6 +426,9 @@ showAllParentheses opt = return $ opt {optPrintFn = showCLTree}
 
 doNotStop :: Options -> IO Options
 doNotStop opt = return $ opt {optIterationCount = -1}
+
+showLastOnly :: Options -> IO Options
+showLastOnly opt = return $ opt {optPutStrFn = putStrLn . last}
 
 defineCombinator :: String -> Options -> IO Options
 defineCombinator combinatorStr opt@(Options {optSymbols = symbols})  =
