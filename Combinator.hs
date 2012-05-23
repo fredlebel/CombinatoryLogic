@@ -1,6 +1,7 @@
 import System
 import System.Console.GetOpt
 import Data.Char
+import Data.List
 import qualified Data.Map as Map
 import Control.Monad.Error
 
@@ -37,6 +38,14 @@ consume ch (c:cs)
     | ch == c   = Right cs
     | otherwise = Left ("Unexpected leading character '" ++ [c] ++ "' in: " ++ (c:cs) ++ " expected:" ++ [ch])
 
+-- Splits a list based on a predicate with the first list in the tuple
+-- containing the element on which the break happened.
+inclusiveBreak :: (a -> Bool) -> [a] -> Either String ([a], [a])
+inclusiveBreak pred lst =
+    case findIndex pred lst of
+        Just i -> Right (splitAt (i+1) lst)
+        Nothing -> Left ("Failed to break list on given predicate.")
+
 -- ================================================================== --
 
 -- Binary tree representing a CL fragment
@@ -45,19 +54,9 @@ data CLTree = Branch CLTree CLTree | -- An application
               Point String CLTree    -- An abstraction
     deriving (Show, Eq)
 
-isCombinator :: Char -> Bool
-isCombinator c = isAscii c && (isLetter c || isDigit c)
 
--- is str = (length str > 2) && (head str == '{') && (last str == '}')
+-- Converts a string to a CLTree.  String can be in minimal parentheses format.
 
-readIdentifier :: String -> Either String (String, String)
-readIdentifier str
-        | (length identifier > 1) && (head identifier == '{') && (head remainder == '}') = Right (tail remainder, identifier ++ "}")
-        | otherwise = Left ("Failed to extract identifier from \"" ++ str ++ "\" identifier=" ++ identifier ++ " remainder=" ++ remainder)
-    where   (identifier, remainder) = break (== '}') str
-
-
--- Converts a string to a CLTree.  String can be in minimal parantheses format.
 readCLTree :: String -> Either String CLTree
 readCLTree str = do
     (remainingStr, tree) <- readCLTreeLeft str
@@ -66,23 +65,20 @@ readCLTree str = do
         then return tree
         else Left ("Unexpected trailing characters \"" ++ remainingStr ++ "\"")
 
+readSymbol :: String -> Either String (String, String)
+readSymbol [] = Left ("Failed to extract identifier from empty string.")
+readSymbol (c:cs)
+    | isAscii c && (isLetter c || isDigit c) =
+        Right (cs, [c])
+    | c == '{' = do
+        (symbol, cs) <- inclusiveBreak (=='}') (c:cs)
+        return (cs, symbol)
+    | otherwise = Left ("Failed to extract identifier from \"" ++ (c:cs) ++ "\"")
+
 readCLTreeLeft :: String -> Either String (String, CLTree)
 readCLTreeLeft [] = Left "Empty combinator string."
 readCLTreeLeft (c:cs)
-    -- If it's a leaf.
-    | isCombinator c = do
-        -- Create the starting left fragment.
-        let leftFragment = Leaf [c]
-        -- Continue parsing the string, now building to the right.
-        readCLTreeRight leftFragment cs
-    -- If it's a leaf with an identifier.
-    | c == '{' = do
-        -- Create the starting left fragment.
-        (cs, identifier) <- readIdentifier (c:cs)
-        let leftFragment = Leaf identifier
-        -- Continue parsing the string, now building to the right.
-        readCLTreeRight leftFragment cs
-    -- If it's the start of parantheses.
+    -- If it's the start of parentheses.
     | c == '('  = do
         (cs, leftFragment) <- readCLTreeSubTree cs
         -- Continue parsing the string, now building to the right.
@@ -91,67 +87,54 @@ readCLTreeLeft (c:cs)
         (cs, leftFragment) <- readCLTreePoint cs
         -- Continue parsing the string, now building to the right.
         readCLTreeRight leftFragment cs
-    | otherwise = Left ("Unexpected leading character '" ++ [c] ++ "' in: " ++ (c:cs))
+    -- Must be a leaf.
+    | otherwise = do
+        (cs, sym) <- readSymbol (c:cs)
+        -- Create the starting left fragment.
+        let leftFragment = Leaf sym
+        -- Continue parsing the string, now building to the right.
+        readCLTreeRight leftFragment cs
 
 
 readCLTreeRight :: CLTree -> String -> Either String (String, CLTree)
 readCLTreeRight leftFragment [] = return ([], leftFragment)
--- Parantheses and brackets roll up the parsing tree
-readCLTreeRight leftFragment (')':cs) = return (')':cs, leftFragment)
-readCLTreeRight leftFragment (']':cs) = return (']':cs, leftFragment)
+-- Parentheses and brackets roll up the parsing tree
+readCLTreeRight leftFragment str@(')':_) = return (str, leftFragment)
+readCLTreeRight leftFragment str@(']':_) = return (str, leftFragment)
 readCLTreeRight leftFragment (c:cs)
-    -- If it's a leaf.
-    | isCombinator c = do
-        -- Create a new branch with this leaf on the right side.
-        let tree = Branch leftFragment (Leaf [c])
-        -- Continue parsing the string.
-        readCLTreeRight tree cs
-    -- If it's a leaf with an identifier.
-    | c == '{' = do
-        -- Create a new branch with this leaf on the right side.
-        (cs, identifier) <- readIdentifier (c:cs)
-        let tree = Branch leftFragment (Leaf identifier)
-        -- Continue parsing the string.
-        readCLTreeRight tree cs
-    -- If it's the start of parantheses.
+    -- If it's the start of parentheses.
     | c == '('  = do
         (cs, rightFragment) <- readCLTreeSubTree cs
-        -- Create a new branch with this fragment on the right side.
-        let tree = Branch leftFragment rightFragment
-        -- Continue parsing the string.
-        readCLTreeRight tree cs
+        continue rightFragment cs
     -- If it's the start of an abstraction.
     | c == '['  = do
         (cs, rightFragment) <- readCLTreePoint cs
-        -- Create a new branch with this fragment on the right side.
-        let tree = Branch leftFragment rightFragment
-        -- Continue parsing the string, now building to the right.
-        readCLTreeRight tree cs
-    | otherwise = Left ("Unexpected leading character '" ++ [c] ++ "' in: " ++ (c:cs))
+        continue rightFragment cs
+    -- Must be a leaf.
+    | otherwise = do
+        (cs, sym) <- readSymbol (c:cs)
+        continue (Leaf sym) cs
+    where
+        continue rightFragment str = readCLTreeRight (Branch leftFragment rightFragment) str
 
--- Reads a CLTree in parantheses
+-- Reads a CLTree in parentheses
 readCLTreeSubTree :: String -> Either String (String, CLTree)
 readCLTreeSubTree [] = Left "Unexpected end of combinator string."
 readCLTreeSubTree str = do
-        (cs, subTree) <- readCLTreeLeft str
-        cs <- consume ')' cs
-        return $ (cs, subTree)
+    (cs, subTree) <- readCLTreeLeft str
+    cs <- consume ')' cs
+    return $ (cs, subTree)
 
 -- Reads an abstraction
 readCLTreePoint :: String -> Either String (String, CLTree)
 readCLTreePoint [] = Left "Unexpected end of combinator string."
-readCLTreePoint (ch:'.':cs) = do
-        (cs, subTree) <- readCLTreeLeft cs
-        cs <- consume ']' cs
-        let tree = Point [ch] subTree
-        return $ (cs, tree)
-readCLTreePoint str = do
-        (cs, identifier) <- readIdentifier str
-        cs <- consume '.' cs
-        (cs, subTree) <- readCLTreeLeft cs
-        cs <- consume ']' cs
-        let tree = Point identifier subTree
-        return $ (cs, tree)
+readCLTreePoint (c:cs) = do
+    (cs, sym) <- readSymbol (c:cs)
+    cs <- consume '.' cs
+    (cs, subTree) <- readCLTreeLeft cs
+    cs <- consume ']' cs
+    let tree = Point sym subTree
+    return $ (cs, tree)
 
 
 -- Symbol lookup.
@@ -192,18 +175,18 @@ compactWithSymbols symbols tree@(Branch l r) =
 loadSymbol :: String -> String -> CLSymbolMap -> Either String CLSymbolMap
 loadSymbol sym str symbols = do
     tree <- readCLTree str
-    let cleanTree = convertAllAbstractions tree
+    let cleanTree = reduceAllAbstractions tree
     normalizedTree <- compile True symbols cleanTree
     return $ Map.insert sym normalizedTree symbols
 
 loadReducedSymbol :: String -> String -> CLSymbolMap -> Either String CLSymbolMap
 loadReducedSymbol sym str symbols = do
     tree <- readCLTree str
-    let cleanTree = convertAllAbstractions tree
+    let cleanTree = reduceAllAbstractions tree
     normalizedTree <- compile True symbols cleanTree
     let nf = findNormalForm normalizedTree
     return $ Map.insert sym nf symbols
-    
+
 -- CLTree reductions
 reduceTree :: CLTree -> CLTree
 -- I reduction
@@ -217,12 +200,12 @@ reduceTree (Leaf x) = (Leaf x)
 -- Branch, reduce both sides
 reduceTree (Branch l r) = Branch (reduceTree l) (reduceTree r)
 -- An abstraction
-reduceTree tree@(Point _ _) = convertFromAbstraction tree
+reduceTree tree@(Point _ _) = reduceAbstraction tree
 
 
 -- Abstraction conversion.  Converts [x.xSx] -> (S(SI(KS))I)
-convertFromAbstraction :: CLTree -> CLTree
-convertFromAbstraction (Point sym tree) = if containsAbstraction tree then Point sym (reduceTree tree) else doConversion sym tree
+reduceAbstraction :: CLTree -> CLTree
+reduceAbstraction (Point sym tree) = if containsAbstraction tree then Point sym (reduceTree tree) else doConversion sym tree
     where   doConversion sym (Branch l r)
                 -- [x.M] -> KM if sym not FV(M)
                 | not (fv sym l || fv sym r)  = Branch (Leaf ['K']) (Branch l r)
@@ -231,24 +214,26 @@ convertFromAbstraction (Point sym tree) = if containsAbstraction tree then Point
                 -- [x.UV] -> S[x.U][x.V] where x FV(U) || FV(V)
                 | otherwise    = Branch (Branch (Leaf ['S']) (Point sym l)) (Point sym r)
             doConversion sym (Leaf x)
+                -- [x.x] -> I
                 | sym == x   = Leaf ['I']
+                -- [x.y] -> (Ky)
                 | otherwise = Branch (Leaf ['K']) (Leaf x)
-            doConversion sym tree@(Point _ _) = Point sym (convertFromAbstraction tree)
+            doConversion sym tree@(Point _ _) = Point sym (reduceAbstraction tree)
             -- Checks if a given character is a free variable in a tree.
             fv sym (Leaf x) = sym == x
             fv sym (Branch l r) = (fv sym l) || (fv sym r)
             fv sym (Point _ x) = fv sym x
-            -- Checks if another abstraction is contained in this abstraction.
+            -- Checks if an abstraction is contained in a given tree.
             containsAbstraction (Leaf _) = False
             containsAbstraction (Branch l r) = (containsAbstraction l) || (containsAbstraction r)
             containsAbstraction (Point _ _) = True
 
 
-convertAllAbstractions :: CLTree -> CLTree
-convertAllAbstractions tree = if newTree == tree then tree else convertAllAbstractions newTree
+reduceAllAbstractions :: CLTree -> CLTree
+reduceAllAbstractions tree = if newTree == tree then tree else reduceAllAbstractions newTree
     where   doRemoval (Branch l r) = Branch (doRemoval l) (doRemoval r)
             doRemoval (Leaf sym) = Leaf sym
-            doRemoval tree@(Point _ _) = convertFromAbstraction tree
+            doRemoval tree@(Point _ _) = reduceAbstraction tree
             newTree = doRemoval tree
 
 -- Reduces the tree until it no longer changes.
@@ -399,10 +384,8 @@ defineSymbol symbolOptStr opt@(Options {optSymbols = symbols}) =
             newSymbols <- (if reduceSymbol then loadReducedSymbol else loadSymbol) sym symbolStr symbols
             return newSymbols
 
-        splitSymbolOpt (c:'=':cs) = Right ([c], cs, False)
-        splitSymbolOpt (c:'!':cs) = Right ([c], cs, True)
         splitSymbolOpt str = do
-            (cs, sym) <- readIdentifier str
+            (cs, sym) <- readSymbol str
             if head cs == '='
                 then do
                     cs <- consume '=' cs
@@ -410,7 +393,7 @@ defineSymbol symbolOptStr opt@(Options {optSymbols = symbols}) =
                 else do
                     cs <- consume '!' cs
                     return (sym, cs, True)
-                
+
 
 
 usePredefinedSymbols :: Options -> IO Options
