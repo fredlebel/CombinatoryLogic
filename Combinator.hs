@@ -1,50 +1,22 @@
-import System
+import System.Exit
+import System.Environment
 import System.Console.GetOpt
 import Data.Char
 import Data.List
 import qualified Data.Map as Map
-import Control.Monad.Error
+import Text.ParserCombinators.Parsec
 
+programHeader :: String
 programHeader = "Combinatory Logic Reducer v1.0 [Frederic LeBel : May 19th, 2012]"
 
 -- ========== GENERIC FUNCTIONS ========== --
--- Simple piping function
-a |> f = f a
-
-count :: (Eq a) => a -> [a] -> Int
-count a [] = 0
-count a (x:xs)
-    | a == x    = 1 + (count a xs)
-    | otherwise = count a xs
-
--- Function to replace all occurences of a
--- certain item in a list with another item.
-replace :: Eq a => a -> a -> [a] -> [a]
-replace a b [] = []
-replace a b (x:xs)
-    | x == a    = b:(replace a b xs)
-    | otherwise = x:(replace a b xs)
 
 -- Search in a map for the first key whose value matches the argument.
 findFirstKey :: (Eq a) => a -> Map.Map k a -> Maybe k
-findFirstKey toFind map = Map.foldrWithKey keyFinder Nothing map
+findFirstKey toFind m = Map.foldrWithKey keyFinder Nothing m
     where keyFinder key value acc
             | toFind == value   = Just key
             | otherwise         = acc
-
-consume :: Char -> String -> Either String String
-consume ch [] = Left ("Expected '" ++ [ch] ++ "', got end of string.")
-consume ch (c:cs)
-    | ch == c   = Right cs
-    | otherwise = Left ("Unexpected leading character '" ++ [c] ++ "' in: " ++ (c:cs) ++ " expected:" ++ [ch])
-
--- Splits a list based on a predicate with the first list in the tuple
--- containing the element on which the break happened.
-inclusiveBreak :: (a -> Bool) -> [a] -> Either String ([a], [a])
-inclusiveBreak pred lst =
-    case findIndex pred lst of
-        Just i -> Right (splitAt (i+1) lst)
-        Nothing -> Left ("Failed to break list on given predicate.")
 
 -- ================================================================== --
 
@@ -56,86 +28,81 @@ data CLTree = Branch CLTree CLTree | -- An application
 
 
 -- Converts a string to a CLTree.  String can be in minimal parentheses format.
+-- Using Parsec
+
+parse_letter_combinator :: Parser String
+parse_letter_combinator = do
+    ch <- try letter <|> digit
+    return [ch]
+
+parse_symbol_combinator :: Parser String
+parse_symbol_combinator = do
+    char '{'
+    sym <- many1 (satisfy (/='}'))
+    char '}'
+    return $ "{" ++ sym ++ "}"
+
+parse_leaf :: Parser CLTree
+parse_leaf = do
+    str <- try parse_letter_combinator <|> parse_symbol_combinator
+    return $ Leaf str
+
+parse_segment :: Parser CLTree
+parse_segment = try parse_leaf <|> try parse_sub_expression <|> parse_lambda
+
+parse_sub_expression :: Parser CLTree
+parse_sub_expression = do
+    char '('
+    tree <- parse_tree
+    char ')'
+    return tree
+
+parse_lambda :: Parser CLTree
+parse_lambda = do
+    char '['
+    c <- try parse_letter_combinator <|> parse_symbol_combinator
+    char '.'
+    tree <- parse_tree
+    char ']'
+    return $ Point c tree
+
+parse_tree :: Parser CLTree
+parse_tree = do
+    segment <- parse_segment
+    tree <- continue_parsing segment
+    return tree
+
+    where
+        continue_parsing leftTree =
+            try ( do
+                segment <- parse_segment
+                continue_parsing $ Branch leftTree segment)
+            <|>
+            return leftTree
+
+parse_combinator_expression :: Parser CLTree
+parse_combinator_expression = do
+    tree <- parse_tree
+    eof
+    return tree
 
 readCLTree :: String -> Either String CLTree
-readCLTree str = do
-    (remainingStr, tree) <- readCLTreeLeft str
-    -- Validate that the returned string is empty.
-    if null remainingStr
-        then return tree
-        else Left ("Unexpected trailing characters \"" ++ remainingStr ++ "\"")
+readCLTree str =
+    case parse parse_combinator_expression "" str of
+        Right tree -> return tree
+        Left err   -> Left $ show err
 
-readSymbol :: String -> Either String (String, String)
-readSymbol [] = Left ("Failed to extract identifier from empty string.")
-readSymbol (c:cs)
-    | isAscii c && (isLetter c || isDigit c) =
-        Right (cs, [c])
-    | c == '{' = do
-        (symbol, cs) <- inclusiveBreak (=='}') (c:cs)
-        return (cs, symbol)
-    | otherwise = Left ("Failed to extract identifier from \"" ++ (c:cs) ++ "\"")
-
-readCLTreeLeft :: String -> Either String (String, CLTree)
-readCLTreeLeft [] = Left "Empty combinator string."
-readCLTreeLeft (c:cs)
-    -- If it's the start of parentheses.
-    | c == '('  = do
-        (cs, leftFragment) <- readCLTreeSubTree cs
-        -- Continue parsing the string, now building to the right.
-        readCLTreeRight leftFragment cs
-    | c == '[' = do
-        (cs, leftFragment) <- readCLTreePoint cs
-        -- Continue parsing the string, now building to the right.
-        readCLTreeRight leftFragment cs
-    -- Must be a leaf.
-    | otherwise = do
-        (cs, sym) <- readSymbol (c:cs)
-        -- Create the starting left fragment.
-        let leftFragment = Leaf sym
-        -- Continue parsing the string, now building to the right.
-        readCLTreeRight leftFragment cs
-
-
-readCLTreeRight :: CLTree -> String -> Either String (String, CLTree)
-readCLTreeRight leftFragment [] = return ([], leftFragment)
--- Parentheses and brackets roll up the parsing tree
-readCLTreeRight leftFragment str@(')':_) = return (str, leftFragment)
-readCLTreeRight leftFragment str@(']':_) = return (str, leftFragment)
-readCLTreeRight leftFragment (c:cs)
-    -- If it's the start of parentheses.
-    | c == '('  = do
-        (cs, rightFragment) <- readCLTreeSubTree cs
-        continue rightFragment cs
-    -- If it's the start of an abstraction.
-    | c == '['  = do
-        (cs, rightFragment) <- readCLTreePoint cs
-        continue rightFragment cs
-    -- Must be a leaf.
-    | otherwise = do
-        (cs, sym) <- readSymbol (c:cs)
-        continue (Leaf sym) cs
+splitSymbolDefinition :: String -> Either String (String, String, Bool)
+splitSymbolDefinition str =
+    case parse parse_symbol_definition "" str of
+        Right result -> Right result
+        Left err   -> Left $ show err
     where
-        continue rightFragment str = readCLTreeRight (Branch leftFragment rightFragment) str
-
--- Reads a CLTree in parentheses
-readCLTreeSubTree :: String -> Either String (String, CLTree)
-readCLTreeSubTree [] = Left "Unexpected end of combinator string."
-readCLTreeSubTree str = do
-    (cs, subTree) <- readCLTreeLeft str
-    cs <- consume ')' cs
-    return $ (cs, subTree)
-
--- Reads an abstraction
-readCLTreePoint :: String -> Either String (String, CLTree)
-readCLTreePoint [] = Left "Unexpected end of combinator string."
-readCLTreePoint (c:cs) = do
-    (cs, sym) <- readSymbol (c:cs)
-    cs <- consume '.' cs
-    (cs, subTree) <- readCLTreeLeft cs
-    cs <- consume ']' cs
-    let tree = Point sym subTree
-    return $ (cs, tree)
-
+        parse_symbol_definition = do
+            sym <- try parse_letter_combinator <|> parse_symbol_combinator
+            opt <- try (char '=') <|> char '!'
+            val <- many1 anyChar
+            return $ (sym, val, opt == '!')
 
 -- Symbol lookup.
 type CLSymbolMap = Map.Map String CLTree
@@ -163,8 +130,8 @@ compile strict symbols (Point sym tree) = do
 -- Effectively the opposite of the function compile.
 -- Starts from the top of the tree so it will always compact to the biggest symbol.
 compactWithSymbols :: CLSymbolMap -> CLTree -> CLTree
-compactWithSymbols symbols tree@(Leaf _) = tree
-compactWithSymbols symbols tree@(Point sym subTree) = Point sym (compactWithSymbols symbols subTree)
+compactWithSymbols _ tree@(Leaf _) = tree
+compactWithSymbols symbols (Point sym subTree) = Point sym (compactWithSymbols symbols subTree)
 compactWithSymbols symbols tree@(Branch l r) =
     case findFirstKey tree symbols of
         Just sym -> Leaf sym
@@ -205,20 +172,20 @@ reduceTree tree@(Point _ _) = reduceAbstraction tree
 
 -- Abstraction conversion.  Converts [x.xSx] -> (S(SI(KS))I)
 reduceAbstraction :: CLTree -> CLTree
-reduceAbstraction (Point sym tree) = if containsAbstraction tree then Point sym (reduceTree tree) else doConversion sym tree
-    where   doConversion sym (Branch l r)
+reduceAbstraction (Point sym tree) = if containsAbstraction tree then Point sym (reduceTree tree) else doConversion tree
+    where   doConversion (Branch l r)
                 -- [x.M] -> KM if sym not FV(M)
                 | not (fv sym l || fv sym r)  = Branch (Leaf ['K']) (Branch l r)
                 -- Eta transformation. [x.Ux] -> U
                 | not (fv sym l) && r == (Leaf sym)   = l
                 -- [x.UV] -> S[x.U][x.V] where x FV(U) || FV(V)
                 | otherwise    = Branch (Branch (Leaf ['S']) (Point sym l)) (Point sym r)
-            doConversion sym (Leaf x)
+            doConversion (Leaf x)
                 -- [x.x] -> I
                 | sym == x   = Leaf ['I']
                 -- [x.y] -> (Ky)
                 | otherwise = Branch (Leaf ['K']) (Leaf x)
-            doConversion sym tree@(Point _ _) = Point sym (reduceAbstraction tree)
+            doConversion tree@(Point _ _) = Point sym (reduceAbstraction tree)
             -- Checks if a given character is a free variable in a tree.
             fv sym (Leaf x) = sym == x
             fv sym (Branch l r) = (fv sym l) || (fv sym r)
@@ -312,6 +279,7 @@ runCombinator iterationCount outputFn tree =
 
 
 -- Program entrypoint.
+main :: IO ()
 main = do
     args <- getArgs
 
@@ -380,19 +348,9 @@ defineSymbol symbolOptStr opt@(Options {optSymbols = symbols}) =
             exitWith $ ExitFailure 1
     where
         work str = do
-            (sym, symbolStr, reduceSymbol) <- splitSymbolOpt str
+            (sym, symbolStr, reduceSymbol) <- splitSymbolDefinition str
             newSymbols <- (if reduceSymbol then loadReducedSymbol else loadSymbol) sym symbolStr symbols
             return newSymbols
-
-        splitSymbolOpt str = do
-            (cs, sym) <- readSymbol str
-            if head cs == '='
-                then do
-                    cs <- consume '=' cs
-                    return (sym, cs, False)
-                else do
-                    cs <- consume '!' cs
-                    return (sym, cs, True)
 
 
 
