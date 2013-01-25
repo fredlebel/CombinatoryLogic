@@ -1,3 +1,6 @@
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE QuasiQuotes #-}
+
 import System.Exit
 import System.Environment
 import System.Console.GetOpt
@@ -5,6 +8,7 @@ import Data.Char
 import Data.List
 import qualified Data.Map as Map
 import Text.ParserCombinators.Parsec
+import CombinatorQuoter
 
 programHeader :: String
 programHeader = "Combinatory Logic Reducer v1.0 [Frederic LeBel : May 19th, 2012]"
@@ -20,79 +24,9 @@ findFirstKey toFind m = Map.foldrWithKey keyFinder Nothing m
 
 -- ================================================================== --
 
--- Binary tree representing a CL fragment
-data CLTree = Branch CLTree CLTree | -- An application
-              Leaf String |          -- A single combinator symbol
-              Point String CLTree    -- An abstraction
-    deriving (Show, Eq)
 
-
--- Converts a string to a CLTree.  String can be in minimal parentheses format.
--- Using Parsec
-
-parse_letter_combinator :: Parser String
-parse_letter_combinator = do
-    ch <- try letter <|> digit
-    return [ch]
-
-parse_symbol_combinator :: Parser String
-parse_symbol_combinator = do
-    char '{'
-    sym <- many1 (satisfy (/='}'))
-    char '}'
-    return $ "{" ++ sym ++ "}"
-
-parse_leaf :: Parser CLTree
-parse_leaf = do
-    str <- try parse_letter_combinator <|> parse_symbol_combinator
-    return $ Leaf str
-
-parse_segment :: Parser CLTree
-parse_segment = try parse_leaf <|> try parse_sub_expression <|> parse_lambda
-
-parse_sub_expression :: Parser CLTree
-parse_sub_expression = do
-    char '('
-    tree <- parse_tree
-    char ')'
-    return tree
-
-parse_lambda :: Parser CLTree
-parse_lambda = do
-    char '['
-    c <- try parse_letter_combinator <|> parse_symbol_combinator
-    char '.'
-    tree <- parse_tree
-    char ']'
-    return $ Point c tree
-
-parse_tree :: Parser CLTree
-parse_tree = do
-    segment <- parse_segment
-    tree <- continue_parsing segment
-    return tree
-
-    where
-        continue_parsing leftTree =
-            try ( do
-                segment <- parse_segment
-                continue_parsing $ Branch leftTree segment)
-            <|>
-            return leftTree
-
-parse_combinator_expression :: Parser CLTree
-parse_combinator_expression = do
-    tree <- parse_tree
-    eof
-    return tree
-
-readCLTree :: String -> Either String CLTree
-readCLTree str =
-    case parse parse_combinator_expression "" str of
-        Right tree -> return tree
-        Left err   -> Left $ show err
-
-splitSymbolDefinition :: String -> Either String (String, String, Bool)
+-- Parses a symbol definition returning a tuple containing (symbolStr, treeStr, normalFormBool)
+splitSymbolDefinition :: String -> Either String (Symbol, String, Bool)
 splitSymbolDefinition str =
     case parse parse_symbol_definition "" str of
         Right result -> Right result
@@ -105,7 +39,7 @@ splitSymbolDefinition str =
             return $ (sym, val, opt == '!')
 
 -- Symbol lookup.
-type CLSymbolMap = Map.Map String CLTree
+type CLSymbolMap = Map.Map Symbol CLTree
 
 -- Compile a higher level CLTree with multiple combinators to one
 -- that only uses SKI combinators.
@@ -117,10 +51,10 @@ compile strict symbols (Leaf sym)
         Nothing         -> if strict
                            then Left ("Unrecognized combinator character : '" ++ sym ++ "'")
                            else Right (Leaf sym)
-compile strict symbols (Branch l r) = do
+compile strict symbols (App l r) = do
     newL <- compile strict symbols l
     newR <- compile strict symbols r
-    return $ Branch newL newR
+    return $ App newL newR
 compile strict symbols (Point sym tree) = do
     newTree <- compile strict symbols tree
     return $ Point sym newTree
@@ -132,21 +66,27 @@ compile strict symbols (Point sym tree) = do
 compactWithSymbols :: CLSymbolMap -> CLTree -> CLTree
 compactWithSymbols _ tree@(Leaf _) = tree
 compactWithSymbols symbols (Point sym subTree) = Point sym (compactWithSymbols symbols subTree)
-compactWithSymbols symbols tree@(Branch l r) =
+compactWithSymbols symbols tree@(App l r) =
     case findFirstKey tree symbols of
         Just sym -> Leaf sym
-        Nothing -> Branch (compactWithSymbols symbols l) (compactWithSymbols symbols r)
+        Nothing -> App (compactWithSymbols symbols l) (compactWithSymbols symbols r)
 
 -- Loads a combinator symbol.
 -- Once loaded that symbol can be used in future combinators.
-loadSymbol :: String -> String -> CLSymbolMap -> Either String CLSymbolMap
-loadSymbol sym str symbols = do
+loadStrSymbol :: Symbol -> String -> CLSymbolMap -> Either String CLSymbolMap
+loadStrSymbol sym str symbols = do
     tree <- readCLTree str
     let cleanTree = reduceAllAbstractions tree
     normalizedTree <- compile True symbols cleanTree
     return $ Map.insert sym normalizedTree symbols
 
-loadReducedSymbol :: String -> String -> CLSymbolMap -> Either String CLSymbolMap
+loadTreeSymbol :: Symbol -> CLTree -> CLSymbolMap -> Either String CLSymbolMap
+loadTreeSymbol sym tree symbols = do
+    let cleanTree = reduceAllAbstractions tree
+    normalizedTree <- compile True symbols cleanTree
+    return $ Map.insert sym normalizedTree symbols
+
+loadReducedSymbol :: Symbol -> String -> CLSymbolMap -> Either String CLSymbolMap
 loadReducedSymbol sym str symbols = do
     tree <- readCLTree str
     let cleanTree = reduceAllAbstractions tree
@@ -157,15 +97,15 @@ loadReducedSymbol sym str symbols = do
 -- CLTree reductions
 reduceTree :: CLTree -> CLTree
 -- I reduction
-reduceTree (Branch (Leaf ['I']) x) = x
+reduceTree [cl| I<x> |] = x
 -- K reduction
-reduceTree (Branch (Branch (Leaf ['K']) x) _) = x
+reduceTree [cl| K<x><y> |] = x
 -- S reduction
-reduceTree (Branch (Branch (Branch (Leaf ['S']) x) y) z) = (Branch (Branch x z) (Branch y z))
+reduceTree [cl| S<x><y><z> |] = [cl| <x><z>(<y><z>) |]
 -- Any leaf doesn't reduce.
 reduceTree (Leaf x) = (Leaf x)
--- Branch, reduce both sides
-reduceTree (Branch l r) = Branch (reduceTree l) (reduceTree r)
+-- App, reduce both sides
+reduceTree (App l r) = App (reduceTree l) (reduceTree r)
 -- An abstraction
 reduceTree tree@(Point _ _) = reduceAbstraction tree
 
@@ -173,32 +113,35 @@ reduceTree tree@(Point _ _) = reduceAbstraction tree
 -- Abstraction conversion.  Converts [x.xSx] -> (S(SI(KS))I)
 reduceAbstraction :: CLTree -> CLTree
 reduceAbstraction (Point sym tree) = if containsAbstraction tree then Point sym (reduceTree tree) else doConversion tree
-    where   doConversion (Branch l r)
+    where   doConversion app@(App l r)
                 -- [x.M] -> KM if sym not FV(M)
-                | not (fv sym l || fv sym r)  = Branch (Leaf ['K']) (Branch l r)
+                | not (fv sym app)  = [cl| K<app> |] -- App (Leaf "K") (App l r)
                 -- Eta transformation. [x.Ux] -> U
                 | not (fv sym l) && r == (Leaf sym)   = l
                 -- [x.UV] -> S[x.U][x.V] where x FV(U) || FV(V)
-                | otherwise    = Branch (Branch (Leaf ['S']) (Point sym l)) (Point sym r)
-            doConversion (Leaf x)
+                | otherwise    = App (App (Leaf "S") (Point sym l)) (Point sym r)
+            doConversion leaf@(Leaf x)
                 -- [x.x] -> I
-                | sym == x   = Leaf ['I']
+                | sym == x   = [cl| I |] --Leaf "I"
                 -- [x.y] -> (Ky)
-                | otherwise = Branch (Leaf ['K']) (Leaf x)
-            doConversion tree@(Point _ _) = Point sym (reduceAbstraction tree)
-            -- Checks if a given character is a free variable in a tree.
-            fv sym (Leaf x) = sym == x
-            fv sym (Branch l r) = (fv sym l) || (fv sym r)
+                | otherwise = [cl| K<leaf> |] -- App (Leaf "K") (Leaf x)
+            -- Shouldn't happen because of the 'containsAbstraction' check above.
+            -- doConversion tree@(Point _ _) = Point sym (reduceAbstraction tree)
+
+            -- Checks if a given sumbol is a free variable in a tree.
+            fv sym (Leaf x)    = sym == x
+            fv sym (App l r)   = (fv sym l) || (fv sym r)
             fv sym (Point _ x) = fv sym x
+
             -- Checks if an abstraction is contained in a given tree.
-            containsAbstraction (Leaf _) = False
-            containsAbstraction (Branch l r) = (containsAbstraction l) || (containsAbstraction r)
+            containsAbstraction (Leaf _)    = False
+            containsAbstraction (App l r)   = (containsAbstraction l) || (containsAbstraction r)
             containsAbstraction (Point _ _) = True
 
 
 reduceAllAbstractions :: CLTree -> CLTree
 reduceAllAbstractions tree = if newTree == tree then tree else reduceAllAbstractions newTree
-    where   doRemoval (Branch l r) = Branch (doRemoval l) (doRemoval r)
+    where   doRemoval (App l r) = App (doRemoval l) (doRemoval r)
             doRemoval (Leaf sym) = Leaf sym
             doRemoval tree@(Point _ _) = reduceAbstraction tree
             newTree = doRemoval tree
@@ -214,16 +157,16 @@ findNormalForm tree = if tree == newTree then tree else findNormalForm newTree
 -- Converts a CLTree into a string representation with full parentheses.
 showCLTree :: CLTree -> String
 showCLTree (Leaf c) = c
-showCLTree (Branch l r) = "(" ++ (showCLTree l) ++ (showCLTree r) ++ ")"
+showCLTree (App l r) = "(" ++ (showCLTree l) ++ (showCLTree r) ++ ")"
 showCLTree (Point sym subTree) = "[" ++ sym ++ "." ++ (showCLTree subTree) ++ "]"
 
 -- Converts a CLTree into a string representation with minimal parentheses.
--- That means only right branches are enclosed in parentheses.
+-- That means only right applications are enclosed in parentheses.
 showCLTreeCompact :: CLTree -> String
 showCLTreeCompact (Leaf c) = c
-showCLTreeCompact (Branch l r@(Branch _ _)) = (showCLTreeCompact l) ++ "(" ++ (showCLTreeCompact r) ++ ")"
-showCLTreeCompact (Branch l r)              = (showCLTreeCompact l) ++        (showCLTreeCompact r)
-showCLTreeCompact (Point sym subTree)       = "[" ++ sym ++ "." ++ (showCLTreeCompact subTree) ++ "]"
+showCLTreeCompact (App l r@(App _ _)) = (showCLTreeCompact l) ++ "(" ++ (showCLTreeCompact r) ++ ")"
+showCLTreeCompact (App l r)            = (showCLTreeCompact l) ++        (showCLTreeCompact r)
+showCLTreeCompact (Point sym subTree)   = "[" ++ sym ++ "." ++ (showCLTreeCompact subTree) ++ "]"
 
 hardcodedSymbols :: CLSymbolMap
 hardcodedSymbols =
@@ -232,38 +175,38 @@ hardcodedSymbols =
     where
         result = return Map.empty
             -- Bxyz = x(yz)
-            >>= (loadSymbol "B" "S(KS)K")
+            >>= (loadTreeSymbol "B" [cl| S(KS)K |])
             -- Cxyz = xzy
-            >>= (loadSymbol "C" "S(BBS)(KK)")
+            >>= (loadTreeSymbol "C" [cl| S(BBS)(KK) |])
             -- Wxy = xyy
-            >>= (loadSymbol "W" "SS(KI)")
+            >>= (loadTreeSymbol "W" [cl| SS(KI) |])
             -- Ufx = x(ffx)
-            >>= (loadSymbol "U" "(S(K(SI))(SII))")
+            >>= (loadTreeSymbol "U" [cl| (S(K(SI))(SII)) |])
             -- Y combinator, Yx = x(Yx)
-            >>= (loadSymbol "Y" "UU")
+            >>= (loadTreeSymbol "Y" [cl| UU |])
             -- Txy = yx
-            >>= (loadSymbol "T" "S(K(SI))(S(KK)I)")
+            >>= (loadTreeSymbol "T" [cl| S(K(SI))(S(KK)I) |])
             -- Pxyz = z(xy)
-            >>= (loadSymbol "P" "BT")
+            >>= (loadTreeSymbol "P" [cl| BT |])
             -- Dxy0 = x, Dxy1 = y
-            >>= (loadSymbol "D" "(S(K(S(S(KS)(S(K(SI))(S(KK)K)))))(S(KK)K))")
-            >>= (loadSymbol "0" "(KI)")
-            >>= (loadSymbol "1" "SB(KI)")
-            >>= (loadSymbol "2" "SB(SB(KI))")
-            >>= (loadSymbol "3" "SB(SB(SB(KI)))")
-            >>= (loadSymbol "4" "SB(SB(SB(SB(KI))))")
-            >>= (loadSymbol "5" "SB(SB(SB(SB(SB(KI)))))")
-            >>= (loadSymbol "6" "SB(SB(SB(SB(SB(SB(KI))))))")
-            >>= (loadSymbol "7" "SB(SB(SB(SB(SB(SB(SB(KI)))))))")
-            >>= (loadSymbol "8" "SB(SB(SB(SB(SB(SB(SB(SB(KI))))))))")
-            >>= (loadSymbol "9" "SB(SB(SB(SB(SB(SB(SB(SB(SB(KI)))))))))")
+            >>= (loadTreeSymbol "D" [cl| (S(K(S(S(KS)(S(K(SI))(S(KK)K)))))(S(KK)K)) |])
+            >>= (loadTreeSymbol "0" [cl| (KI) |])
+            >>= (loadTreeSymbol "1" [cl| SB(KI) |])
+            >>= (loadTreeSymbol "2" [cl| SB(SB(KI)) |])
+            >>= (loadTreeSymbol "3" [cl| SB(SB(SB(KI))) |])
+            >>= (loadTreeSymbol "4" [cl| SB(SB(SB(SB(KI)))) |])
+            >>= (loadTreeSymbol "5" [cl| SB(SB(SB(SB(SB(KI))))) |])
+            >>= (loadTreeSymbol "6" [cl| SB(SB(SB(SB(SB(SB(KI)))))) |])
+            >>= (loadTreeSymbol "7" [cl| SB(SB(SB(SB(SB(SB(SB(KI))))))) |])
+            >>= (loadTreeSymbol "8" [cl| SB(SB(SB(SB(SB(SB(SB(SB(KI)))))))) |])
+            >>= (loadTreeSymbol "9" [cl| SB(SB(SB(SB(SB(SB(SB(SB(SB(KI))))))))) |])
 
             -- Q = \yv.D (succ(v0)) (y(v0)(v1))
-            >>= (loadSymbol "Q" "(S(K(S(S(KD)(S(K(SB))(SI(K0))))))(S(S(KS)(S(S(KS)K)(K((SI(K0))))))(K((SI(K1))))))")
+            >>= (loadTreeSymbol "Q" [cl| (S(K(S(S(KD)(S(K(SB))(SI(K0))))))(S(S(KS)(S(S(KS)K)(K((SI(K0))))))(K((SI(K1)))))) |])
             -- R = \xyu.u(Qy)(D0x)1
             -- Rxy0 = x
             -- Rxy(k+1) = yk(Rxyk)
-            >>= (loadSymbol "R" "(S(S(KS)(S(K(S(KS)))(S(K(S(S(KS)(S(K(SI))(S(KK)Q)))))(S(KK)(S(KK)(D0))))))(K(K(K1))))")
+            >>= (loadTreeSymbol "R" [cl| (S(S(KS)(S(K(S(KS)))(S(K(S(S(KS)(S(K(SI))(S(KK)Q)))))(S(KK)(S(KK)(D0))))))(K(K(K1)))) |])
 
 -- Reduces a combinator for a given number of rounds or until it reaches a normal form.
 runCombinator :: Int -> (CLTree -> String) -> CLTree -> [String]
@@ -349,7 +292,7 @@ defineSymbol symbolOptStr opt@(Options {optSymbols = symbols}) =
     where
         work str = do
             (sym, symbolStr, reduceSymbol) <- splitSymbolDefinition str
-            newSymbols <- (if reduceSymbol then loadReducedSymbol else loadSymbol) sym symbolStr symbols
+            newSymbols <- (if reduceSymbol then loadReducedSymbol else loadStrSymbol) sym symbolStr symbols
             return newSymbols
 
 
