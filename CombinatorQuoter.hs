@@ -5,6 +5,7 @@ module CombinatorQuoter where
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 import Language.Haskell.TH.Quote
+import Language.Haskell.Meta.Parse
 
 import Data.Generics
 import Data.Char
@@ -21,15 +22,14 @@ type Symbol = String
 data CLTree = App CLTree CLTree |   -- An application
               Leaf Symbol |         -- A single combinator symbol
               Point Symbol CLTree | -- An abstraction
-              AntiTree String       -- AntiQuoting Tree
+              AntiTree String |     -- AntiQuoting Tree
+              AntiPoint String CLTree      -- AntiQuoting Point symbol
     deriving (Show, Eq, Typeable, Data)
 
 
 -- Converts a string to a CLTree.  String can be in minimal parentheses format.
 -- Using Parsec
 
-parse_haskell_ident :: Parser Symbol
-parse_haskell_ident = many lower
 
 
 parse_letter_combinator :: Parser Symbol
@@ -37,28 +37,32 @@ parse_letter_combinator = do
     ch <- try letter <|> digit
     return [ch]
 
-parse_symbol_combinator :: Parser Symbol
-parse_symbol_combinator = do
+parse_long_combinator :: Parser Symbol
+parse_long_combinator = do
     char '{'
     sym <- many1 (satisfy (/='}'))
     char '}'
     return $ "{" ++ sym ++ "}"
 
+parse_symbol :: Parser Symbol
+parse_symbol = try parse_letter_combinator <|> parse_long_combinator
+    
 parse_leaf :: Parser CLTree
 parse_leaf = do
-    str <- try parse_letter_combinator <|> parse_symbol_combinator
+    str <- parse_symbol
     return $ Leaf str
 
 parse_anti_tree :: Parser CLTree
 parse_anti_tree = do
-    -- string "$leaf:"
     char '<'
-    id <- parse_haskell_ident
+    splice <- many1 (satisfy (/='>'))
     char '>'
-    return $ AntiTree id
+    return $ AntiTree splice
 
 parse_segment :: Parser CLTree
-parse_segment = try parse_leaf <|> try parse_sub_expression <|> try parse_lambda <|> parse_anti_tree
+parse_segment = do
+    spaces
+    try parse_leaf <|> try parse_sub_expression <|> try parse_lambda <|> try parse_anti_tree <|> parse_anti_lambda
 
 parse_sub_expression :: Parser CLTree
 parse_sub_expression = do
@@ -70,11 +74,22 @@ parse_sub_expression = do
 parse_lambda :: Parser CLTree
 parse_lambda = do
     char '['
-    c <- try parse_letter_combinator <|> parse_symbol_combinator
+    c <- try parse_symbol
     char '.'
     tree <- parse_tree
     char ']'
     return $ Point c tree
+
+parse_anti_lambda :: Parser CLTree
+parse_anti_lambda = do
+    char '['
+    char '<'
+    splice <- many1 (satisfy (/='>'))
+    char '>'
+    char '.'
+    tree <- parse_tree
+    char ']'
+    return $ AntiPoint splice tree
 
 parse_tree :: Parser CLTree
 parse_tree = do
@@ -126,9 +141,17 @@ parseCLTree (file, line, col) str =
 -- Expressions
 
 antiCLTreeExp :: CLTree -> Maybe (Q Exp)
-antiCLTreeExp  (AntiTree id)  = Just $ varE (mkName id)
+--antiCLTreeExp  (AntiTree id)  = Just $ varE (mkName id)
+antiCLTreeExp  (AntiTree splice) =
+    case parseExp splice of
+        Right exp   -> Just . return $ exp
+        Left errStr -> fail errStr
+antiCLTreeExp  (AntiPoint splice tree) =
+    case parseExp splice of
+        Right exp   -> Just $ [| Point $(return exp) $(dataToExpQ (const Nothing `extQ` antiCLTreeExp) tree) |]
+        Left errStr -> fail errStr
 antiCLTreeExp  _                = Nothing
-                
+
 quoteCLTreeExp s = do
     loc <- location
     let pos = (loc_filename loc,
@@ -141,8 +164,9 @@ quoteCLTreeExp s = do
 
 antiCLTreePat :: CLTree -> Maybe (Q Pat)
 antiCLTreePat  (AntiTree id)  = Just $ varP (mkName id)
+antiCLTreePat  (AntiPoint id tree) = Just $ conP (mkName "CombinatorQuoter.Point") [varP (mkName id), dataToPatQ (const Nothing `extQ` antiCLTreePat) tree]
 antiCLTreePat  _                = Nothing
-                
+
 quoteCLTreePat s = do
     loc <- location
     let pos = (loc_filename loc,

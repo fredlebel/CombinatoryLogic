@@ -11,7 +11,7 @@ import Text.ParserCombinators.Parsec
 import CombinatorQuoter
 
 programHeader :: String
-programHeader = "Combinatory Logic Reducer v1.0 [Frederic LeBel : May 19th, 2012]"
+programHeader = "Combinatory Logic Reducer v1.1 [Frederic LeBel : March 9th, 2013]"
 
 -- ========== GENERIC FUNCTIONS ========== --
 
@@ -21,6 +21,11 @@ findFirstKey toFind m = Map.foldrWithKey keyFinder Nothing m
     where keyFinder key value acc
             | toFind == value   = Just key
             | otherwise         = acc
+
+-- Apply a function until the result settles
+untilSettle :: (Eq e) => (e -> e) -> e -> e
+untilSettle f e = if e == newE then e else untilSettle f newE
+    where newE = f e
 
 -- ================================================================== --
 
@@ -33,7 +38,7 @@ splitSymbolDefinition str =
         Left err   -> Left $ show err
     where
         parse_symbol_definition = do
-            sym <- try parse_letter_combinator <|> parse_symbol_combinator
+            sym <- parse_symbol
             opt <- try (char '=') <|> char '!'
             val <- many1 anyChar
             return $ (sym, val, opt == '!')
@@ -65,7 +70,8 @@ compile strict symbols (Point sym tree) = do
 -- Starts from the top of the tree so it will always compact to the biggest symbol.
 compactWithSymbols :: CLSymbolMap -> CLTree -> CLTree
 compactWithSymbols _ tree@(Leaf _) = tree
-compactWithSymbols symbols (Point sym subTree) = Point sym (compactWithSymbols symbols subTree)
+--compactWithSymbols symbols (Point sym subTree) = Point sym (compactWithSymbols symbols subTree)
+compactWithSymbols symbols [cl| [<sym>.<subTree>] |] = [cl| [<sym>.<compactWithSymbols symbols subTree>] |]
 compactWithSymbols symbols tree@(App l r) =
     case findFirstKey tree symbols of
         Just sym -> Leaf sym
@@ -76,9 +82,7 @@ compactWithSymbols symbols tree@(App l r) =
 loadStrSymbol :: Symbol -> String -> CLSymbolMap -> Either String CLSymbolMap
 loadStrSymbol sym str symbols = do
     tree <- readCLTree str
-    let cleanTree = reduceAllAbstractions tree
-    normalizedTree <- compile True symbols cleanTree
-    return $ Map.insert sym normalizedTree symbols
+    loadTreeSymbol sym tree symbols
 
 loadTreeSymbol :: Symbol -> CLTree -> CLSymbolMap -> Either String CLSymbolMap
 loadTreeSymbol sym tree symbols = do
@@ -95,32 +99,49 @@ loadReducedSymbol sym str symbols = do
     return $ Map.insert sym nf symbols
 
 -- CLTree reductions
-reduceTree :: CLTree -> CLTree
+lazyReduceTree :: CLTree -> CLTree
 -- I reduction
-reduceTree [cl| I<x> |] = x
+lazyReduceTree [cl| I<x> |] = x
 -- K reduction
-reduceTree [cl| K<x><y> |] = x
+lazyReduceTree [cl| K<x><y> |] = x
 -- S reduction
-reduceTree [cl| S<x><y><z> |] = [cl| <x><z>(<y><z>) |]
--- Any leaf doesn't reduce.
-reduceTree (Leaf x) = (Leaf x)
+lazyReduceTree [cl| S<x><y><z> |] = [cl| <x><z>(<y><z>) |]
 -- App, reduce both sides
-reduceTree (App l r) = App (reduceTree l) (reduceTree r)
+--lazyReduceTree (App l r) = App (lazyReduceTree l) (lazyReduceTree r)
+lazyReduceTree [cl| <l><r> |] = [cl| <lazyReduceTree l><lazyReduceTree r> |]
+-- Any leaf doesn't reduce.
+lazyReduceTree (Leaf x) = (Leaf x)
 -- An abstraction
-reduceTree tree@(Point _ _) = reduceAbstraction tree
+lazyReduceTree (Point sym tree) = reduceAbstraction (sym, tree)
 
+
+-- CLTree reductions
+eagerReduceTree :: CLTree -> CLTree
+-- I reduction
+eagerReduceTree [cl| I<x> |] = eagerReduceTree x
+-- K reduction
+eagerReduceTree [cl| K<x><y> |] = eagerReduceTree x
+-- S reduction
+eagerReduceTree [cl| S<x><y><z> |] = [cl| <eagerReduceTree x><eagerReduceTree z>(<eagerReduceTree y><eagerReduceTree z>) |]
+-- App, reduce both sides
+--eagerReduceTree (App l r) = App (eagerReduceTree l) (eagerReduceTree r)
+eagerReduceTree [cl| <l><r> |] = [cl| <eagerReduceTree l><eagerReduceTree r> |]
+-- Any leaf doesn't reduce.
+eagerReduceTree (Leaf x) = (Leaf x)
+-- An abstraction
+eagerReduceTree (Point sym tree) = reduceAbstraction (sym, tree)
 
 -- Abstraction conversion.  Converts [x.xSx] -> (S(SI(KS))I)
-reduceAbstraction :: CLTree -> CLTree
-reduceAbstraction (Point sym tree) = if containsAbstraction tree then Point sym (reduceTree tree) else doConversion tree
-    where   doConversion app@(App l r)
+reduceAbstraction :: (Symbol, CLTree) -> CLTree
+reduceAbstraction (sym, tree) = if containsAbstraction tree then Point sym (lazyReduceTree tree) else reduceImpl tree
+    where   reduceImpl [cl| <l><r> |]
                 -- [x.M] -> KM if sym not FV(M)
-                | not (fv sym app)  = [cl| K<app> |] -- App (Leaf "K") (App l r)
+                | not (fv sym l) && not (fv sym r)  = [cl| K(<l><r>) |] -- App (Leaf "K") (App l r)
                 -- Eta transformation. [x.Ux] -> U
                 | not (fv sym l) && r == (Leaf sym)   = l
                 -- [x.UV] -> S[x.U][x.V] where x FV(U) || FV(V)
-                | otherwise    = App (App (Leaf "S") (Point sym l)) (Point sym r)
-            doConversion leaf@(Leaf x)
+                | otherwise    = [cl| S[<sym>.<l>][<sym>.<r>] |] -- App (App (Leaf "S") (Point sym l)) (Point sym r)
+            reduceImpl leaf@(Leaf x)
                 -- [x.x] -> I
                 | sym == x   = [cl| I |] --Leaf "I"
                 -- [x.y] -> (Ky)
@@ -128,7 +149,7 @@ reduceAbstraction (Point sym tree) = if containsAbstraction tree then Point sym 
             -- Shouldn't happen because of the 'containsAbstraction' check above.
             -- doConversion tree@(Point _ _) = Point sym (reduceAbstraction tree)
 
-            -- Checks if a given sumbol is a free variable in a tree.
+            -- Checks if a given symbol is a free variable in a tree.
             fv sym (Leaf x)    = sym == x
             fv sym (App l r)   = (fv sym l) || (fv sym r)
             fv sym (Point _ x) = fv sym x
@@ -140,17 +161,16 @@ reduceAbstraction (Point sym tree) = if containsAbstraction tree then Point sym 
 
 
 reduceAllAbstractions :: CLTree -> CLTree
-reduceAllAbstractions tree = if newTree == tree then tree else reduceAllAbstractions newTree
+reduceAllAbstractions = untilSettle doRemoval
     where   doRemoval (App l r) = App (doRemoval l) (doRemoval r)
-            doRemoval (Leaf sym) = Leaf sym
-            doRemoval tree@(Point _ _) = reduceAbstraction tree
-            newTree = doRemoval tree
+            doRemoval leaf@(Leaf _) = leaf
+            doRemoval (Point sym tree) = reduceAbstraction (sym, tree)
+
 
 -- Reduces the tree until it no longer changes.
 -- Can loop forever if the tree has no normal forms.
 findNormalForm :: CLTree -> CLTree
-findNormalForm tree = if tree == newTree then tree else findNormalForm newTree
-    where newTree = reduceTree tree
+findNormalForm = untilSettle eagerReduceTree
 
 -- Convert CLTree to a string
 
@@ -165,8 +185,8 @@ showCLTree (Point sym subTree) = "[" ++ sym ++ "." ++ (showCLTree subTree) ++ "]
 showCLTreeCompact :: CLTree -> String
 showCLTreeCompact (Leaf c) = c
 showCLTreeCompact (App l r@(App _ _)) = (showCLTreeCompact l) ++ "(" ++ (showCLTreeCompact r) ++ ")"
-showCLTreeCompact (App l r)            = (showCLTreeCompact l) ++        (showCLTreeCompact r)
-showCLTreeCompact (Point sym subTree)   = "[" ++ sym ++ "." ++ (showCLTreeCompact subTree) ++ "]"
+showCLTreeCompact (App l r)           = (showCLTreeCompact l) ++        (showCLTreeCompact r)
+showCLTreeCompact (Point sym subTree) = "[" ++ sym ++ "." ++ (showCLTreeCompact subTree) ++ "]"
 
 hardcodedSymbols :: CLSymbolMap
 hardcodedSymbols =
@@ -209,14 +229,14 @@ hardcodedSymbols =
             >>= (loadTreeSymbol "R" [cl| (S(S(KS)(S(K(S(KS)))(S(K(S(S(KS)(S(K(SI))(S(KK)Q)))))(S(KK)(S(KK)(D0))))))(K(K(K1)))) |])
 
 -- Reduces a combinator for a given number of rounds or until it reaches a normal form.
-runCombinator :: Int -> (CLTree -> String) -> CLTree -> [String]
-runCombinator 0 outputFn tree = [outputFn tree, "\n..."]
-runCombinator iterationCount outputFn tree =
+runCombinator :: Int -> (CLTree -> CLTree) -> (CLTree -> String) -> CLTree -> [String]
+runCombinator 0 _ outputFn tree = [outputFn tree, "\n..."]
+runCombinator iterationCount reduceFn outputFn tree =
     if nextTree == tree
         then [output]
-        else output:(runCombinator (iterationCount - 1) outputFn nextTree)
+        else output:(runCombinator (iterationCount - 1) reduceFn outputFn nextTree)
     where
-        nextTree = reduceTree tree
+        nextTree = reduceFn tree
         output = outputFn tree
     -- Stop if reached normal form.
 
@@ -240,8 +260,9 @@ main = do
                     optCompactFn = compactFn,
                     optPrintFn = printFn,
                     optPutStrFn = putStrFn,
+                    optReduceFn = reduceFn,
                     optCombinator = Just tree } ->
-                        putStrFn . runCombinator iterationCount (printFn . compactFn symbols) $ tree
+                        putStrFn . runCombinator iterationCount reduceFn (printFn . compactFn symbols) $ tree
 
 
 -- Dealing with program arguments and parsing them.
@@ -252,6 +273,7 @@ data Options = Options {
         optCompactFn :: (CLSymbolMap -> CLTree -> CLTree),
         optPrintFn :: (CLTree -> String),
         optPutStrFn :: ([String] -> IO()),
+        optReduceFn :: (CLTree -> CLTree),
         optCombinator :: Maybe CLTree
     }
 
@@ -262,6 +284,7 @@ defaultOptions = Options {
         optCompactFn = compactWithSymbols,
         optPrintFn = showCLTreeCompact,
         optPutStrFn = mapM_ putStrLn,
+        optReduceFn = lazyReduceTree,
         optCombinator = Nothing
     }
 
@@ -274,6 +297,7 @@ options = [
         Option ['P'] ["show_parentheses"]       (NoArg showAllParentheses)              "show full parentheses, ex: \"((SK)I)\"",
         Option ['f'] ["no_stop"]                (NoArg doNotStop)                       "reduce until reaching NF, no stop at 200 iterations",
         Option ['l'] ["last"]                   (NoArg showLastOnly)                    "only show the last line of the reduction",
+        Option ['e'] ["eager"]                  (NoArg eagerReduce)                     "tree reduction is done eagerly",
         Option ['c'] ["combinator"]             (ReqArg defineCombinator "COMBINATOR")  "combinator to reduce"
     ]
 
@@ -313,6 +337,9 @@ doNotStop opt = return $ opt {optIterationCount = -1}
 
 showLastOnly :: Options -> IO Options
 showLastOnly opt = return $ opt {optPutStrFn = putStrLn . last}
+
+eagerReduce :: Options -> IO Options
+eagerReduce opt = return $ opt {optReduceFn = eagerReduceTree}
 
 defineCombinator :: String -> Options -> IO Options
 defineCombinator combinatorStr opt@(Options {optSymbols = symbols})  =

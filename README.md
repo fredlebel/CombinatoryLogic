@@ -62,5 +62,7 @@ Command line tool arguments
     -L             --SKI                     shows only SKI combinators, no symbols
     -P             --show_parentheses        show full parentheses, ex: "((SK)I)"
     -f             --no_stop                 reduce until reaching NF, no stop at 200 iterations
+    -l             --last                    only show the last line of the reduction
+    -e             --eager                   tree reduction is done eagerly
     -c COMBINATOR  --combinator=COMBINATOR   combinator to reduce
 

@@ -60,6 +60,7 @@
                 <TextBlock Grid.Row="0" Text="Options" FontWeight="Bold" Background="#FFffffdd"/>
                 <WrapPanel Orientation="Horizontal" Grid.Row="1">
                     <CheckBox Name="OptSKI" ToolTip="Show only SKI combinators in the output." Unchecked="Opt_CheckedChanged" Checked="Opt_CheckedChanged" Margin="0,0,10,0">SKI only</CheckBox>
+                    <CheckBox Name="OptEager" ToolTip="Reduce the expression eagerly." Unchecked="Opt_CheckedChanged" Checked="Opt_CheckedChanged" Margin="0,0,10,0">Eager</CheckBox>
                     <CheckBox Name="OptParentheses" ToolTip="Show full parentheses in the output." Unchecked="Opt_CheckedChanged" Checked="Opt_CheckedChanged" Margin="0,0,10,0">Full parentheses</CheckBox>
                     <CheckBox Name="OptDefaultCombinators" ToolTip="Use combinators predefined in the backend code." Unchecked="Opt_CheckedChanged" Checked="Opt_CheckedChanged" Margin="0,0,10,0" IsChecked="True">Include predefined combinators</CheckBox>
                     <CheckBox Name="OptNoStop" ToolTip="Don't stop if still reducing after 200 iterations." Unchecked="Opt_CheckedChanged" Checked="Opt_CheckedChanged" Margin="0,0,10,0">Run until NF</CheckBox>

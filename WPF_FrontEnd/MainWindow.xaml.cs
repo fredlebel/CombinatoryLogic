@@ -50,6 +50,8 @@ namespace WPF_FrontEnd
                 arguments += "--no_stop ";
             if (OptShowLastLine.IsChecked.Value)
                 arguments += "--last ";
+            if (OptEager.IsChecked.Value)
+                arguments += "--eager ";
 
             // Append the user defined symbols
             foreach (var line in Regex.Split(Combinators.Text, "\r\n"))
