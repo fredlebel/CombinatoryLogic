@@ -33,7 +33,7 @@ untilSettle f e = if e == newE then e else untilSettle f newE
 -- Parses a symbol definition returning a tuple containing (symbolStr, treeStr, normalFormBool)
 splitSymbolDefinition :: String -> Either String (Symbol, String, Bool)
 splitSymbolDefinition str =
-    case parse parse_symbol_definition "" str of
+    case parse parse_symbol_definition str str of
         Right result -> Right result
         Left err   -> Left $ show err
     where

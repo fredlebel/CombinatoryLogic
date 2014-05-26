@@ -1,17 +1,26 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module CombinatorQuoter where
+module CombinatorQuoter
+( CLTree (..)
+, Symbol
+, parse_symbol
+, cl
+, readCLTree
+) where
+
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 import Language.Haskell.TH.Quote
 import Language.Haskell.Meta.Parse
+import Control.Applicative ((<$), (<*), (*>), (<*>), (<$>), liftA, pure)
 
 import Data.Generics
 import Data.Char
 import Data.List
 import Data.Maybe
-import Text.ParserCombinators.Parsec
+import Text.Parsec
+import Text.Parsec.String
 
 -- ================================================================== --
 
@@ -30,92 +39,49 @@ data CLTree = App CLTree CLTree |   -- An application
 -- Converts a string to a CLTree.  String can be in minimal parentheses format.
 -- Using Parsec
 
-
+a <*. b = a <* char b
+b .*> a = char b *> a
+a <++> b = (++) <$> a <*> b
+a <:> b = (:) <$> a <*> b
 
 parse_letter_combinator :: Parser Symbol
-parse_letter_combinator = do
-    ch <- try letter <|> digit
-    return [ch]
+parse_letter_combinator = pure <$> (try letter <|> digit)
 
 parse_long_combinator :: Parser Symbol
-parse_long_combinator = do
-    char '{'
-    sym <- many1 (satisfy (/='}'))
-    char '}'
-    return $ "{" ++ sym ++ "}"
+parse_long_combinator = string "{" <++> many1 (noneOf "}") <++> string "}"
 
 parse_symbol :: Parser Symbol
 parse_symbol = try parse_letter_combinator <|> parse_long_combinator
-    
+
 parse_leaf :: Parser CLTree
-parse_leaf = do
-    str <- parse_symbol
-    return $ Leaf str
+parse_leaf = Leaf <$> parse_symbol
 
 parse_anti_tree :: Parser CLTree
-parse_anti_tree = do
-    char '<'
-    splice <- many1 (satisfy (/='>'))
-    char '>'
-    return $ AntiTree splice
+parse_anti_tree = AntiTree <$> ('<' .*> many1 (noneOf ">") <*. '>')
 
 parse_segment :: Parser CLTree
-parse_segment = do
-    spaces
-    try parse_leaf <|> try parse_sub_expression <|> try parse_lambda <|> try parse_anti_tree <|> parse_anti_lambda
+parse_segment = try parse_leaf <|> try parse_sub_expression <|> try parse_lambda <|> try parse_anti_tree <|> parse_anti_lambda
 
 parse_sub_expression :: Parser CLTree
-parse_sub_expression = do
-    char '('
-    tree <- parse_tree
-    char ')'
-    return tree
+parse_sub_expression = '(' .*> parse_tree <*. ')'
 
 parse_lambda :: Parser CLTree
-parse_lambda = do
-    char '['
-    c <- try parse_symbol
-    char '.'
-    tree <- parse_tree
-    char ']'
-    return $ Point c tree
+parse_lambda = Point <$> ('[' .*> parse_symbol <*. '.') <*> (parse_tree <*. ']')
 
 parse_anti_lambda :: Parser CLTree
-parse_anti_lambda = do
-    char '['
-    char '<'
-    splice <- many1 (satisfy (/='>'))
-    char '>'
-    char '.'
-    tree <- parse_tree
-    char ']'
-    return $ AntiPoint splice tree
+parse_anti_lambda = AntiPoint <$>
+    (string "[<" *> many1 (noneOf ">") <* string ">.") <*>
+    (parse_tree <*. ']')
 
 parse_tree :: Parser CLTree
-parse_tree = do
-    segment <- parse_segment
-    tree <- continue_parsing segment
-    return tree
-
-    where
-        continue_parsing leftTree =
-            try ( do
-                segment <- parse_segment
-                continue_parsing $ App leftTree segment)
-            <|>
-            return leftTree
+parse_tree = foldl1 App <$> many1 (try (spaces *> parse_segment))
 
 parse_combinator_expression :: Parser CLTree
-parse_combinator_expression = do
-    spaces
-    tree <- parse_tree
-    spaces
-    eof
-    return tree
+parse_combinator_expression = spaces *> parse_tree <* spaces <* eof
 
 readCLTree :: String -> Either String CLTree
 readCLTree str =
-    case parse parse_combinator_expression "" str of
+    case parse parse_combinator_expression str str of
         Right tree -> return tree
         Left err   -> Left $ show err
 
