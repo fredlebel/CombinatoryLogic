@@ -4,3 +4,7 @@ obj/
 *.suo
 *.hi
 *.o
+.cabal-sandbox/
+cabal.sandbox.config
+dist/
+

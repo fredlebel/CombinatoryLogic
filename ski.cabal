@@ -1,0 +1,31 @@
+name:                SKI
+version:             1.1
+synopsis:            SK Combinator Reducer
+description:         Command line tool that reduces SK combinators and converts lambda calculus into SK.
+license:             PublicDomain
+license-file:        LICENSE
+author:              Frederic LeBel
+maintainer:          frederic.lebel@gmail.com
+-- copyright:
+category:            Math, Programming
+build-type:          Simple
+-- extra-source-files:
+cabal-version:       >=1.10
+
+--------------------------------------------------------------------------------
+
+executable ski
+  main-is:             Combinator.hs
+  other-modules:
+  other-extensions:    EmptyDataDecls, FlexibleContexts, GADTs, OverloadedStrings, QuasiQuotes, TemplateHaskell, TypeFamilies, RankNTypes, MultiWayIf, TupleSections, FlexibleInstances, DataKinds
+  build-depends:       base >=4.7 && <4.8,
+                       parsec,
+                       text,
+                       template-haskell,
+                       haskell-src-meta,
+                       syb,
+                       containers
+  hs-source-dirs:      src
+  default-language:    Haskell2010
+  ghc-options:         -Wall -fno-warn-missing-signatures -fno-warn-unused-binds -fno-warn-unused-do-bind
+
