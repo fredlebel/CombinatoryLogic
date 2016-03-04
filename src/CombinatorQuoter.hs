@@ -5,7 +5,7 @@
 module CombinatorQuoter
 ( CLTree (..)
 , Symbol
-, parse_symbol
+, parseSymbol
 , cl
 , readCLTree
 ) where
@@ -43,60 +43,60 @@ b .*> a = char b *> a
 a <++> b = (++) <$> a <*> b
 a <:> b = (:) <$> a <*> b
 
-parse_letter_combinator :: Parser Symbol
-parse_letter_combinator = pure <$> (try letter <|> digit <|> char '_')
+parseLetterCombinator :: Parser Symbol
+parseLetterCombinator = pure <$> (try letter <|> digit <|> char '_')
 
-parse_long_combinator :: Parser Symbol
-parse_long_combinator = string "{" <++> many1 (noneOf "}") <++> string "}"
+parseLongCombinator :: Parser Symbol
+parseLongCombinator = string "{" <++> many1 (noneOf "}") <++> string "}"
 
-parse_symbol :: Parser Symbol
-parse_symbol = try parse_letter_combinator <|> parse_long_combinator
+parseSymbol :: Parser Symbol
+parseSymbol = try parseLetterCombinator <|> parseLongCombinator
 
 class ParseableTree t where
     mkApp :: t -> t -> t
     mkLeaf :: Symbol -> t
     mkPoint :: Symbol -> t -> t
 
-    parse_tree :: Parser t
-    parse_tree = foldl1 mkApp <$> many1 (try (spaces *> parse_segment))
+    parseTree :: Parser t
+    parseTree = foldl1 mkApp <$> many1 (try (spaces *> parseSegment))
 
-    parse_leaf :: Parser t
-    parse_leaf = mkLeaf <$> parse_symbol
+    parseLeaf :: Parser t
+    parseLeaf = mkLeaf <$> parseSymbol
 
-    parse_sub_expression :: Parser t
-    parse_sub_expression = '(' .*> parse_tree <*. ')'
+    parseSubExpression :: Parser t
+    parseSubExpression = '(' .*> parseTree <*. ')'
 
-    parse_lambda :: Parser t
-    parse_lambda = mkPoint <$> ('[' .*> parse_symbol <*. '.') <*> (parse_tree <*. ']')
+    parseLambda :: Parser t
+    parseLambda = mkPoint <$> ('[' .*> parseSymbol <*. '.') <*> (parseTree <*. ']')
 
-    parse_segment :: Parser t
+    parseSegment :: Parser t
 
 instance ParseableTree CLTree where
     mkApp = App
     mkLeaf = Leaf
     mkPoint = Point
-    parse_segment = try parse_leaf <|> try parse_sub_expression <|> try parse_lambda
+    parseSegment = try parseLeaf <|> try parseSubExpression <|> try parseLambda
 
 instance ParseableTree CLTree' where
     mkApp = App'
     mkLeaf = Leaf'
     mkPoint = Point'
-    parse_segment = try parse_leaf <|> try parse_sub_expression <|> try parse_lambda <|> try parse_anti_tree <|> parse_anti_lambda
+    parseSegment = try parseLeaf <|> try parseSubExpression <|> try parseLambda <|> try parseAntiTree <|> parseAntiLambda
 
-parse_anti_tree :: Parser CLTree'
-parse_anti_tree = AntiTree' <$> ('<' .*> many1 (noneOf ">") <*. '>')
+parseAntiTree :: Parser CLTree'
+parseAntiTree = AntiTree' <$> ('<' .*> many1 (noneOf ">") <*. '>')
 
-parse_anti_lambda :: Parser CLTree'
-parse_anti_lambda = AntiPoint' <$>
+parseAntiLambda :: Parser CLTree'
+parseAntiLambda = AntiPoint' <$>
     (string "[<" *> many1 (noneOf ">") <* string ">.") <*>
-    (parse_tree <*. ']')
+    (parseTree <*. ']')
 
-parse_combinator_expression :: (ParseableTree t) => Parser t
-parse_combinator_expression = spaces *> parse_tree <* spaces <* eof
+parseCombinatorExpression :: (ParseableTree t) => Parser t
+parseCombinatorExpression = spaces *> parseTree <* spaces <* eof
 
 readCLTree :: String -> Either String CLTree
 readCLTree str =
-    case parse parse_combinator_expression str str of
+    case parse parseCombinatorExpression str str of
         Right tree -> return tree
         Left err   -> Left $ show err
 
@@ -113,11 +113,10 @@ parseCLTree (file, line, col) str =
         p = do
                 pos <- getPosition
                 setPosition $
-                    (flip setSourceName) file $
-                    (flip setSourceLine) line $
-                    (flip setSourceColumn) col $
-                    pos
-                parse_combinator_expression
+                    flip setSourceName file $
+                    flip setSourceLine line $
+                    setSourceColumn pos col
+                parseCombinatorExpression
 
 -- Expressions
 
@@ -135,14 +134,6 @@ antiCLTreeExp (App' l r) = Just $ [| App $(dataToExpQ (const Nothing `extQ` anti
 antiCLTreeExp (Leaf' sym) = Just $ [| Leaf $(litE (StringL sym)) |]
 antiCLTreeExp (Point' sym tree) = Just $ [| Point $(litE (StringL sym)) $(dataToExpQ (const Nothing `extQ` antiCLTreeExp) tree) |]
 
-quoteCLTreeExp s = do
-    loc <- location
-    let pos = (loc_filename loc,
-                fst (loc_start loc),
-                snd (loc_start loc))
-    tree <- parseCLTree pos s
-    dataToExpQ (const Nothing `extQ` antiCLTreeExp) tree
-
 -- Patterns
 
 antiCLTreePat :: CLTree' -> Maybe (Q Pat)
@@ -152,20 +143,20 @@ antiCLTreePat (App' l r) = Just $ conP (mkName "CombinatorQuoter.App") [dataToPa
 antiCLTreePat (Leaf' sym) = Just $ conP (mkName "CombinatorQuoter.Leaf") [litP (StringL sym)]
 antiCLTreePat (Point' sym tree) = Just $ conP (mkName "CombinatorQuoter.Point") [litP (StringL sym), dataToPatQ (const Nothing) tree]
 
-quoteCLTreePat s = do
+quoteCLTree dataToFn  s = do
     loc <- location
     let pos = (loc_filename loc,
                 fst (loc_start loc),
                 snd (loc_start loc))
     tree <- parseCLTree pos s
-    dataToPatQ (const Nothing `extQ` antiCLTreePat) tree
+    dataToFn tree
 
 -- The Quasi Quoter
 cl :: QuasiQuoter
 cl = QuasiQuoter
     {
-        quoteExp = quoteCLTreeExp,
-        quotePat = quoteCLTreePat,
+        quoteExp = quoteCLTree (dataToExpQ (const Nothing `extQ` antiCLTreeExp)),
+        quotePat = quoteCLTree (dataToPatQ (const Nothing `extQ` antiCLTreePat)),
         quoteType = error "Not supported",
         quoteDec = error "Not supported"
     }

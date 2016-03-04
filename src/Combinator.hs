@@ -14,7 +14,7 @@ programHeader = "Combinatory Logic Reducer v1.1 [Frederic LeBel : March 9th, 201
 
 -- Search in a map for the first key whose value matches the argument.
 findFirstKey :: (Eq a) => a -> Map.Map k a -> Maybe k
-findFirstKey toFind m = Map.foldrWithKey keyFinder Nothing m
+findFirstKey toFind = Map.foldrWithKey keyFinder Nothing
     where keyFinder key value acc
             | toFind == value   = Just key
             | otherwise         = acc
@@ -30,15 +30,15 @@ untilSettle f e = if e == newE then e else untilSettle f newE
 -- Parses a symbol definition returning a tuple containing (symbolStr, treeStr, normalFormBool)
 splitSymbolDefinition :: String -> Either String (Symbol, String, Bool)
 splitSymbolDefinition str =
-    case parse parse_symbol_definition str str of
+    case parse parseSymbolDefinition str str of
         Right result -> Right result
         Left err   -> Left $ show err
     where
-        parse_symbol_definition = do
-            sym <- parse_symbol
+        parseSymbolDefinition = do
+            sym <- parseSymbol
             opt <- try (char '=') <|> char '!'
             val <- many1 anyChar
-            return $ (sym, val, opt == '!')
+            return (sym, val, opt == '!')
 
 -- Symbol lookup.
 type CLSymbolMap = Map.Map Symbol CLTree
@@ -107,7 +107,7 @@ lazyReduceTree [cl| S<x><y><z> |] = [cl| <x><z>(<y><z>) |]
 --lazyReduceTree (App l r) = App (lazyReduceTree l) (lazyReduceTree r)
 lazyReduceTree [cl| <l><r> |] = [cl| <lazyReduceTree l><lazyReduceTree r> |]
 -- Any leaf doesn't reduce.
-lazyReduceTree (Leaf x) = (Leaf x)
+lazyReduceTree (Leaf x) = Leaf x
 -- An abstraction
 lazyReduceTree (Point sym tree) = reduceAbstraction (sym, tree)
 
@@ -123,7 +123,7 @@ eagerReduceTree [cl| S<x><y><z> |] = [cl| <eagerReduceTree x><eagerReduceTree z>
 --eagerReduceTree (App l r) = App (eagerReduceTree l) (eagerReduceTree r)
 eagerReduceTree [cl| <l><r> |] = [cl| <eagerReduceTree l><eagerReduceTree r> |]
 -- Any leaf doesn't reduce.
-eagerReduceTree (Leaf x) = (Leaf x)
+eagerReduceTree (Leaf x) = Leaf x
 -- An abstraction
 eagerReduceTree (Point sym tree) = reduceAbstraction (sym, tree)
 
@@ -134,7 +134,7 @@ reduceAbstraction (sym, tree) = if containsAbstraction tree then Point sym (lazy
                 -- [x.M] -> KM if sym not FV(M)
                 | not (fv sym l) && not (fv sym r)  = [cl| K(<l><r>) |] -- App (Leaf "K") (App l r)
                 -- Eta transformation. [x.Ux] -> U
-                | not (fv sym l) && r == (Leaf sym)   = l
+                | not (fv sym l) && r == Leaf sym   = l
                 -- [x.UV] -> S[x.U][x.V] where x FV(U) || FV(V)
                 | otherwise    = [cl| S[<sym>.<l>][<sym>.<r>] |] -- App (App (Leaf "S") (Point sym l)) (Point sym r)
             reduceImpl leaf@(Leaf x)
@@ -147,12 +147,12 @@ reduceAbstraction (sym, tree) = if containsAbstraction tree then Point sym (lazy
 
             -- Checks if a given symbol is a free variable in a tree.
             fv sym' (Leaf x)    = sym' == x
-            fv sym' (App l r)   = (fv sym' l) || (fv sym' r)
+            fv sym' (App l r)   = fv sym' l || fv sym' r
             fv sym' (Point _ x) = fv sym' x
 
             -- Checks if an abstraction is contained in a given tree.
             containsAbstraction (Leaf _)    = False
-            containsAbstraction (App l r)   = (containsAbstraction l) || (containsAbstraction r)
+            containsAbstraction (App l r)   = containsAbstraction l || containsAbstraction r
             containsAbstraction (Point _ _) = True
 
 
@@ -173,16 +173,16 @@ findNormalForm = untilSettle eagerReduceTree
 -- Converts a CLTree into a string representation with full parentheses.
 showCLTree :: CLTree -> String
 showCLTree (Leaf c) = c
-showCLTree (App l r) = "(" ++ (showCLTree l) ++ (showCLTree r) ++ ")"
-showCLTree (Point sym subTree) = "[" ++ sym ++ "." ++ (showCLTree subTree) ++ "]"
+showCLTree (App l r) = "(" ++ showCLTree l ++ showCLTree r ++ ")"
+showCLTree (Point sym subTree) = "[" ++ sym ++ "." ++ showCLTree subTree ++ "]"
 
 -- Converts a CLTree into a string representation with minimal parentheses.
 -- That means only right applications are enclosed in parentheses.
 showCLTreeCompact :: CLTree -> String
 showCLTreeCompact (Leaf c) = c
-showCLTreeCompact (App l r@(App _ _)) = (showCLTreeCompact l) ++ "(" ++ (showCLTreeCompact r) ++ ")"
-showCLTreeCompact (App l r)           = (showCLTreeCompact l) ++        (showCLTreeCompact r)
-showCLTreeCompact (Point sym subTree) = "[" ++ sym ++ "." ++ (showCLTreeCompact subTree) ++ "]"
+showCLTreeCompact (App l r@(App _ _)) = showCLTreeCompact l ++ "(" ++ showCLTreeCompact r ++ ")"
+showCLTreeCompact (App l r)           = showCLTreeCompact l ++        showCLTreeCompact r
+showCLTreeCompact (Point sym subTree) = "[" ++ sym ++ "." ++ showCLTreeCompact subTree ++ "]"
 
 hardcodedSymbols :: CLSymbolMap
 hardcodedSymbols =
@@ -190,40 +190,40 @@ hardcodedSymbols =
         Right symbols -> symbols
         Left _ -> undefined
     where
-        result = return Map.empty
+        result = Right Map.empty
             -- Bxyz = x(yz)
-            >>= (loadTreeSymbol "B" [cl| S(KS)K |])
+            >>= loadTreeSymbol "B" [cl| S(KS)K |]
             -- Cxyz = xzy
-            >>= (loadTreeSymbol "C" [cl| S(BBS)(KK) |])
+            >>= loadTreeSymbol "C" [cl| S(BBS)(KK) |]
             -- Wxy = xyy
-            >>= (loadTreeSymbol "W" [cl| SS(KI) |])
+            >>= loadTreeSymbol "W" [cl| SS(KI) |]
             -- Ufx = x(ffx)
-            >>= (loadTreeSymbol "U" [cl| (S(K(SI))(SII)) |])
+            >>= loadTreeSymbol "U" [cl| (S(K(SI))(SII)) |]
             -- Y combinator, Yx = x(Yx)
-            >>= (loadTreeSymbol "Y" [cl| UU |])
+            >>= loadTreeSymbol "Y" [cl| UU |]
             -- Txy = yx
-            >>= (loadTreeSymbol "T" [cl| S(K(SI))(S(KK)I) |])
+            >>= loadTreeSymbol "T" [cl| S(K(SI))(S(KK)I) |]
             -- Pxyz = z(xy)
-            >>= (loadTreeSymbol "P" [cl| BT |])
+            >>= loadTreeSymbol "P" [cl| BT |]
             -- Dxy0 = x, Dxy1 = y
-            >>= (loadTreeSymbol "D" [cl| (S(K(S(S(KS)(S(K(SI))(S(KK)K)))))(S(KK)K)) |])
-            >>= (loadTreeSymbol "0" [cl| (KI) |])
-            >>= (loadTreeSymbol "1" [cl| SB(KI) |])
-            >>= (loadTreeSymbol "2" [cl| SB(SB(KI)) |])
-            >>= (loadTreeSymbol "3" [cl| SB(SB(SB(KI))) |])
-            >>= (loadTreeSymbol "4" [cl| SB(SB(SB(SB(KI)))) |])
-            >>= (loadTreeSymbol "5" [cl| SB(SB(SB(SB(SB(KI))))) |])
-            >>= (loadTreeSymbol "6" [cl| SB(SB(SB(SB(SB(SB(KI)))))) |])
-            >>= (loadTreeSymbol "7" [cl| SB(SB(SB(SB(SB(SB(SB(KI))))))) |])
-            >>= (loadTreeSymbol "8" [cl| SB(SB(SB(SB(SB(SB(SB(SB(KI)))))))) |])
-            >>= (loadTreeSymbol "9" [cl| SB(SB(SB(SB(SB(SB(SB(SB(SB(KI))))))))) |])
+            >>= loadTreeSymbol "D" [cl| (S(K(S(S(KS)(S(K(SI))(S(KK)K)))))(S(KK)K)) |]
+            >>= loadTreeSymbol "0" [cl| (KI) |]
+            >>= loadTreeSymbol "1" [cl| SB(KI) |]
+            >>= loadTreeSymbol "2" [cl| SB(SB(KI)) |]
+            >>= loadTreeSymbol "3" [cl| SB(SB(SB(KI))) |]
+            >>= loadTreeSymbol "4" [cl| SB(SB(SB(SB(KI)))) |]
+            >>= loadTreeSymbol "5" [cl| SB(SB(SB(SB(SB(KI))))) |]
+            >>= loadTreeSymbol "6" [cl| SB(SB(SB(SB(SB(SB(KI)))))) |]
+            >>= loadTreeSymbol "7" [cl| SB(SB(SB(SB(SB(SB(SB(KI))))))) |]
+            >>= loadTreeSymbol "8" [cl| SB(SB(SB(SB(SB(SB(SB(SB(KI)))))))) |]
+            >>= loadTreeSymbol "9" [cl| SB(SB(SB(SB(SB(SB(SB(SB(SB(KI))))))))) |]
 
             -- Q = \yv.D (succ(v0)) (y(v0)(v1))
-            >>= (loadTreeSymbol "Q" [cl| (S(K(S(S(KD)(S(K(SB))(SI(K0))))))(S(S(KS)(S(S(KS)K)(K((SI(K0))))))(K((SI(K1)))))) |])
+            >>= loadTreeSymbol "Q" [cl| (S(K(S(S(KD)(S(K(SB))(SI(K0))))))(S(S(KS)(S(S(KS)K)(K((SI(K0))))))(K((SI(K1)))))) |]
             -- R = \xyu.u(Qy)(D0x)1
             -- Rxy0 = x
             -- Rxy(k+1) = yk(Rxyk)
-            >>= (loadTreeSymbol "R" [cl| (S(S(KS)(S(K(S(KS)))(S(K(S(S(KS)(S(K(SI))(S(KK)Q)))))(S(KK)(S(KK)(D0))))))(K(K(K1)))) |])
+            >>= loadTreeSymbol "R" [cl| (S(S(KS)(S(K(S(KS)))(S(K(S(S(KS)(S(K(SI))(S(KK)Q)))))(S(KK)(S(KK)(D0))))))(K(K(K1)))) |]
 
 -- Reduces a combinator for a given number of rounds or until it reaches a normal form.
 runCombinator :: Int -> (CLTree -> CLTree) -> (CLTree -> String) -> CLTree -> [String]
@@ -231,7 +231,7 @@ runCombinator 0 _ outputFn tree = [outputFn tree, "\n..."]
 runCombinator iterationCount reduceFn outputFn tree =
     if nextTree == tree
         then [output]
-        else output:(runCombinator (iterationCount - 1) reduceFn outputFn nextTree)
+        else output : runCombinator (iterationCount - 1) reduceFn outputFn nextTree
     where
         nextTree = reduceFn tree
         output = outputFn tree
@@ -267,10 +267,10 @@ main = do
 data Options = Options {
         optSymbols :: CLSymbolMap,
         optIterationCount :: Int,
-        optCompactFn :: (CLSymbolMap -> CLTree -> CLTree),
-        optPrintFn :: (CLTree -> String),
-        optPutStrFn :: ([String] -> IO()),
-        optReduceFn :: (CLTree -> CLTree),
+        optCompactFn :: CLSymbolMap -> CLTree -> CLTree,
+        optPrintFn :: CLTree -> String,
+        optPutStrFn :: [String] -> IO(),
+        optReduceFn :: CLTree -> CLTree,
         optCombinator :: Maybe CLTree
     }
 
@@ -301,10 +301,10 @@ options = [
 showVersion :: Options -> IO Options
 showVersion _ = do
     putStrLn programHeader
-    exitWith ExitSuccess
+    exitSuccess
 
 defineSymbol :: String -> Options -> IO Options
-defineSymbol symbolOptStr opt@(Options {optSymbols = symbols}) =
+defineSymbol symbolOptStr opt@Options {optSymbols = symbols} =
     case work symbolOptStr of
         Right newSymbols -> return $ opt {optSymbols = newSymbols}
         Left str -> do
@@ -313,17 +313,16 @@ defineSymbol symbolOptStr opt@(Options {optSymbols = symbols}) =
     where
         work str = do
             (sym, symbolStr, reduceSymbol) <- splitSymbolDefinition str
-            newSymbols <- (if reduceSymbol then loadReducedSymbol else loadStrSymbol) sym symbolStr symbols
-            return newSymbols
+            (if reduceSymbol then loadReducedSymbol else loadStrSymbol) sym symbolStr symbols
 
 
 
 usePredefinedSymbols :: Options -> IO Options
-usePredefinedSymbols opt@(Options {optSymbols = symbols}) =
+usePredefinedSymbols opt@Options {optSymbols = symbols} =
     return $ opt {optSymbols = Map.union symbols hardcodedSymbols}
 
 showSKIOnly :: Options -> IO Options
-showSKIOnly opt = return $ opt { optCompactFn = (\_ -> id) }
+showSKIOnly opt = return $ opt { optCompactFn = const id }
 
 
 showAllParentheses :: Options -> IO Options
@@ -339,8 +338,8 @@ eagerReduce :: Options -> IO Options
 eagerReduce opt = return $ opt {optReduceFn = eagerReduceTree}
 
 defineCombinator :: String -> Options -> IO Options
-defineCombinator combinatorStr opt@(Options {optSymbols = symbols})  =
-    case return combinatorStr >>= readCLTree >>= compile False symbols of
+defineCombinator combinatorStr opt@Options {optSymbols = symbols}  =
+    case Right combinatorStr >>= readCLTree >>= compile False symbols of
         Right tree -> return $ opt {optCombinator = Just tree}
         Left str -> do
             putStrLn str
