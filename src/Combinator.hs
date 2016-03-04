@@ -1,11 +1,8 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
 
 import System.Exit
 import System.Environment
 import System.Console.GetOpt
-import Data.Char
-import Data.List
 import qualified Data.Map as Map
 import Text.ParserCombinators.Parsec
 import CombinatorQuoter
@@ -103,7 +100,7 @@ lazyReduceTree :: CLTree -> CLTree
 -- I reduction
 lazyReduceTree [cl| I<x> |] = x
 -- K reduction
-lazyReduceTree [cl| K<x><y> |] = x
+lazyReduceTree [cl| K<x><_> |] = x
 -- S reduction
 lazyReduceTree [cl| S<x><y><z> |] = [cl| <x><z>(<y><z>) |]
 -- App, reduce both sides
@@ -114,13 +111,12 @@ lazyReduceTree (Leaf x) = (Leaf x)
 -- An abstraction
 lazyReduceTree (Point sym tree) = reduceAbstraction (sym, tree)
 
-
 -- CLTree reductions
 eagerReduceTree :: CLTree -> CLTree
 -- I reduction
 eagerReduceTree [cl| I<x> |] = eagerReduceTree x
 -- K reduction
-eagerReduceTree [cl| K<x><y> |] = eagerReduceTree x
+eagerReduceTree [cl| K<x><_> |] = eagerReduceTree x
 -- S reduction
 eagerReduceTree [cl| S<x><y><z> |] = [cl| <eagerReduceTree x><eagerReduceTree z>(<eagerReduceTree y><eagerReduceTree z>) |]
 -- App, reduce both sides
@@ -147,12 +143,12 @@ reduceAbstraction (sym, tree) = if containsAbstraction tree then Point sym (lazy
                 -- [x.y] -> (Ky)
                 | otherwise = [cl| K<leaf> |] -- App (Leaf "K") (Leaf x)
             -- Shouldn't happen because of the 'containsAbstraction' check above.
-            -- doConversion tree@(Point _ _) = Point sym (reduceAbstraction tree)
+            reduceImpl (Point _ _) = undefined
 
             -- Checks if a given symbol is a free variable in a tree.
-            fv sym (Leaf x)    = sym == x
-            fv sym (App l r)   = (fv sym l) || (fv sym r)
-            fv sym (Point _ x) = fv sym x
+            fv sym' (Leaf x)    = sym' == x
+            fv sym' (App l r)   = (fv sym' l) || (fv sym' r)
+            fv sym' (Point _ x) = fv sym' x
 
             -- Checks if an abstraction is contained in a given tree.
             containsAbstraction (Leaf _)    = False
@@ -192,6 +188,7 @@ hardcodedSymbols :: CLSymbolMap
 hardcodedSymbols =
     case result of
         Right symbols -> symbols
+        Left _ -> undefined
     where
         result = return Map.empty
             -- Bxyz = x(yz)
@@ -248,7 +245,7 @@ main = do
 
     case getOpt RequireOrder options args of
         ([], [], []) -> putStrLn $ usageInfo programHeader options
-        (actions, nonOpts, msgs) -> do
+        (actions, _, _) -> do
             -- Execute all option functions, returning the final options.
             opts <- foldl (>>=) (return defaultOptions) actions
 
@@ -291,7 +288,7 @@ defaultOptions = Options {
 options :: [OptDescr (Options -> IO Options)]
 options = [
         Option ['v'] ["version"]                (NoArg showVersion)                     "show version number",
-        Option ['s'] ["symbol"]                 (ReqArg defineSymbol "SYMBOL")          "define a symbol and a combinator, ex: \"B:S(KS)K\"",
+        Option ['s'] ["symbol"]                 (ReqArg defineSymbol "SYMBOL")          "define a symbol and a combinator, ex: \"B=S(KS)K\"",
         Option ['S'] ["use_predefined_symbols"] (NoArg usePredefinedSymbols)            "use the predefined symbols",
         Option ['L'] ["SKI"]                    (NoArg showSKIOnly)                     "shows only SKI combinators, no symbols",
         Option ['P'] ["show_parentheses"]       (NoArg showAllParentheses)              "show full parentheses, ex: \"((SK)I)\"",
