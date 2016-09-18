@@ -265,24 +265,24 @@ main = do
 -- Dealing with program arguments and parsing them.
 
 data Options = Options {
-        optSymbols :: CLSymbolMap,
+        optSymbols        :: CLSymbolMap,
         optIterationCount :: Int,
-        optCompactFn :: CLSymbolMap -> CLTree -> CLTree,
-        optPrintFn :: CLTree -> String,
-        optPutStrFn :: [String] -> IO(),
-        optReduceFn :: CLTree -> CLTree,
-        optCombinator :: Maybe CLTree
+        optCompactFn      :: CLSymbolMap -> CLTree -> CLTree,
+        optPrintFn        :: CLTree -> String,
+        optPutStrFn       :: [String] -> IO(),
+        optReduceFn       :: CLTree -> CLTree,
+        optCombinator     :: Maybe CLTree
     }
 
 defaultOptions :: Options
-defaultOptions = Options {
-        optSymbols = Map.empty,
+defaultOptions            = Options {
+        optSymbols        = Map.empty,
         optIterationCount = 200,
-        optCompactFn = compactWithSymbols,
-        optPrintFn = showCLTreeCompact,
-        optPutStrFn = mapM_ putStrLn,
-        optReduceFn = lazyReduceTree,
-        optCombinator = Nothing
+        optCompactFn      = compactWithSymbols,
+        optPrintFn        = showCLTreeCompact,
+        optPutStrFn       = mapM_ putStrLn,
+        optReduceFn       = lazyReduceTree,
+        optCombinator     = Nothing
     }
 
 options :: [OptDescr (Options -> IO Options)]

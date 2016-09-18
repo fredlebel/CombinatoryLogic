@@ -38,10 +38,10 @@ data CLTree' = App' CLTree' CLTree' |   -- An application
 -- Converts a string to a CLTree'.  String can be in minimal parentheses format.
 -- Using Parsec
 
-a <*. b = a <* char b
-b .*> a = char b *> a
+a <*. b  = a <* char b
+b .*> a  = char b *> a
 a <++> b = (++) <$> a <*> b
-a <:> b = (:) <$> a <*> b
+a <:> b  = (:) <$> a <*> b
 
 parseLetterCombinator :: Parser Symbol
 parseLetterCombinator = pure <$> (try letter <|> digit <|> char '_')
@@ -53,8 +53,8 @@ parseSymbol :: Parser Symbol
 parseSymbol = try parseLetterCombinator <|> parseLongCombinator
 
 class ParseableTree t where
-    mkApp :: t -> t -> t
-    mkLeaf :: Symbol -> t
+    mkApp   :: t -> t -> t
+    mkLeaf  :: Symbol -> t
     mkPoint :: Symbol -> t -> t
 
     parseTree :: Parser t
@@ -72,15 +72,15 @@ class ParseableTree t where
     parseSegment :: Parser t
 
 instance ParseableTree CLTree where
-    mkApp = App
-    mkLeaf = Leaf
-    mkPoint = Point
+    mkApp        = App
+    mkLeaf       = Leaf
+    mkPoint      = Point
     parseSegment = try parseLeaf <|> try parseSubExpression <|> try parseLambda
 
 instance ParseableTree CLTree' where
-    mkApp = App'
-    mkLeaf = Leaf'
-    mkPoint = Point'
+    mkApp        = App'
+    mkLeaf       = Leaf'
+    mkPoint      = Point'
     parseSegment = try parseLeaf <|> try parseSubExpression <|> try parseLambda <|> try parseAntiTree <|> parseAntiLambda
 
 parseAntiTree :: Parser CLTree'
