@@ -1,0 +1,7 @@
+cradle:
+  cabal:
+    - path: "src/Combinator.hs"
+      component: "SKI:exe:ski"
+
+    - path: "src/CombinatorQuoter.hs"
+      component: "SKI:exe:ski"

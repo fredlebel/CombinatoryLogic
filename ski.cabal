@@ -17,6 +17,7 @@ cabal-version:       >=1.10
 executable ski
   main-is:             Combinator.hs
   other-modules:
+    CombinatorQuoter
   other-extensions:    EmptyDataDecls, FlexibleContexts, GADTs, OverloadedStrings, QuasiQuotes, TemplateHaskell, TypeFamilies, RankNTypes, MultiWayIf, TupleSections, FlexibleInstances, DataKinds
   build-depends:       base >=4.7,
                        parsec,

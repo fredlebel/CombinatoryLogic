@@ -104,7 +104,7 @@ readCLTree str =
 -- QUASIQUOTER
 -- ==============================================================
 
-parseCLTree :: Monad m => (String, Int, Int) -> String -> m CLTree'
+parseCLTree :: MonadFail m => (String, Int, Int) -> String -> m CLTree'
 parseCLTree (file, line, col) str =
     case runParser p () "" str of
       Left err  -> fail $ show err
@@ -128,11 +128,11 @@ antiCLTreeExp (AntiTree' splice) =
         Left errStr -> fail errStr
 antiCLTreeExp (AntiPoint' splice tree) =
     case parseExp splice of
-        Right expr   -> Just $ [| Point $(return expr) $(dataToExpQ (const Nothing `extQ` antiCLTreeExp) tree) |]
+        Right expr   -> Just [| Point $(return expr) $(dataToExpQ (const Nothing `extQ` antiCLTreeExp) tree) |]
         Left errStr -> fail errStr
-antiCLTreeExp (App' l r) = Just $ [| App $(dataToExpQ (const Nothing `extQ` antiCLTreeExp) l) $(dataToExpQ (const Nothing `extQ` antiCLTreeExp) r) |]
-antiCLTreeExp (Leaf' sym) = Just $ [| Leaf $(litE (StringL sym)) |]
-antiCLTreeExp (Point' sym tree) = Just $ [| Point $(litE (StringL sym)) $(dataToExpQ (const Nothing `extQ` antiCLTreeExp) tree) |]
+antiCLTreeExp (App' l r) = Just [| App $(dataToExpQ (const Nothing `extQ` antiCLTreeExp) l) $(dataToExpQ (const Nothing `extQ` antiCLTreeExp) r) |]
+antiCLTreeExp (Leaf' sym) = Just [| Leaf $(litE (StringL sym)) |]
+antiCLTreeExp (Point' sym tree) = Just [| Point $(litE (StringL sym)) $(dataToExpQ (const Nothing `extQ` antiCLTreeExp) tree) |]
 
 -- Patterns
 
@@ -143,6 +143,7 @@ antiCLTreePat (App' l r) = Just $ conP (mkName "CombinatorQuoter.App") [dataToPa
 antiCLTreePat (Leaf' sym) = Just $ conP (mkName "CombinatorQuoter.Leaf") [litP (StringL sym)]
 antiCLTreePat (Point' sym tree) = Just $ conP (mkName "CombinatorQuoter.Point") [litP (StringL sym), dataToPatQ (const Nothing) tree]
 
+quoteCLTree :: (CLTree' -> Q b) -> String -> Q b
 quoteCLTree dataToFn  s = do
     loc <- location
     let pos = (loc_filename loc,
